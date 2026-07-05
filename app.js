@@ -143,8 +143,13 @@ function parseCSV(text, delimiter){
 
 function parseINGAmount(str){
   if(!str) return 0;
-  const cleaned = str.trim().replace(/\./g,'').replace(',', '.');
-  return parseFloat(cleaned) || 0;
+  let s = str.trim();
+  // Some ING exports use a stray whitespace/tab instead of a comma as decimal
+  // separator (e.g. "24\t90" meaning 24,90). Normalise that to a comma first.
+  s = s.replace(/(\d)[\t ]+(\d{1,2})$/, '$1,$2');
+  // Remove thousands separators (dots), then use comma as decimal point.
+  s = s.replace(/\./g, '').replace(',', '.');
+  return parseFloat(s) || 0;
 }
 
 function parseINGDate(str){
@@ -174,21 +179,41 @@ function findCategoryForDescription(desc){
   return null;
 }
 
+function rowLooksLikeHeader(row){
+  // A header row contains column names like "Datum"; a data row starts with
+  // an 8-digit date (yyyymmdd). Some newer ING exports have no header at all.
+  const first = (row[0] || '').trim();
+  if(/^\d{8}$/.test(first)) return false;
+  return row.some(c => c.trim().toLowerCase().includes('datum'));
+}
+
 function parseINGFile(text, personKey){
   const rows = parseCSV(text, ';');
-  if(rows.length < 2) return { added: 0, duplicates: 0, needsCategory: 0 };
-  const header = rows[0];
-  const idxDatum = findColumnIndex(header, 'datum');
-  const idxNaam = findColumnIndex(header, 'naam / omschrijving', 'naam/omschrijving');
-  const idxTegen = findColumnIndex(header, 'tegenrekening');
-  const idxAfBij = findColumnIndex(header, 'af bij', 'af/bij');
-  const idxBedrag = findColumnIndex(header, 'bedrag (eur)', 'bedrag');
-  const idxMeded = findColumnIndex(header, 'mededelingen');
+  if(rows.length < 1) return { added: 0, duplicates: 0, needsCategory: 0 };
+
+  const hasHeader = rowLooksLikeHeader(rows[0]);
+  let idxDatum, idxNaam, idxTegen, idxAfBij, idxBedrag, idxMeded, dataStart;
+
+  if(hasHeader){
+    const header = rows[0];
+    idxDatum = findColumnIndex(header, 'datum');
+    idxNaam = findColumnIndex(header, 'naam / omschrijving', 'naam/omschrijving');
+    idxTegen = findColumnIndex(header, 'tegenrekening');
+    idxAfBij = findColumnIndex(header, 'af bij', 'af/bij');
+    idxBedrag = findColumnIndex(header, 'bedrag (eur)', 'bedrag');
+    idxMeded = findColumnIndex(header, 'mededelingen');
+    dataStart = 1;
+  } else {
+    // No header present: fall back to the fixed ING column order
+    // Datum;Naam/Omschrijving;Rekening;Tegenrekening;Code;Af Bij (of Debit/Credit);Bedrag;Mutatiesoort;Mededelingen;...
+    idxDatum = 0; idxNaam = 1; idxTegen = 3; idxAfBij = 5; idxBedrag = 6; idxMeded = 8;
+    dataStart = 0;
+  }
 
   let added = 0, duplicates = 0, needsCategory = 0;
   const existingIds = new Set(state.transactions.map(t => t.id));
 
-  for(let i=1;i<rows.length;i++){
+  for(let i=dataStart;i<rows.length;i++){
     const r = rows[i];
     if(!r || r.length < 2) continue;
     const date = parseINGDate(r[idxDatum] || '');
@@ -196,8 +221,8 @@ function parseINGFile(text, personKey){
     const tegen = idxTegen !== -1 ? (r[idxTegen] || '').trim() : '';
     const afbij = idxAfBij !== -1 ? (r[idxAfBij] || '').trim().toLowerCase() : '';
     let amount = parseINGAmount(r[idxBedrag] || '0');
-    if(afbij === 'af') amount = -Math.abs(amount);
-    else if(afbij === 'bij') amount = Math.abs(amount);
+    if(afbij === 'af' || afbij === 'debit') amount = -Math.abs(amount);
+    else if(afbij === 'bij' || afbij === 'credit') amount = Math.abs(amount);
     const mededelingen = idxMeded !== -1 ? (r[idxMeded] || '').trim() : '';
     const fullDesc = (naam + ' ' + mededelingen).trim();
 
