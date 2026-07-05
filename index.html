@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Huishoudboekje</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="ledger">
+
+  <header class="ledger-header">
+    <div class="ledger-header-inner">
+      <div class="ledger-title">
+        <span class="ledger-eyebrow">Grootboek</span>
+        <h1>Huishoudboekje</h1>
+      </div>
+      <div class="ledger-saldo-strip" id="headerSaldoStrip">
+        <!-- gevuld via JS -->
+      </div>
+    </div>
+  </header>
+
+  <div class="ledger-body">
+
+    <nav class="tab-rail" id="tabRail">
+      <button class="tab-tab active" data-tab="invoer">
+        <span class="tab-index">01</span>
+        <span class="tab-label">Invoeren</span>
+      </button>
+      <button class="tab-tab" data-tab="categoriseren" id="tabCategoriseren">
+        <span class="tab-index">02</span>
+        <span class="tab-label">Categoriseren</span>
+        <span class="tab-badge" id="uncategorizedBadge" hidden>0</span>
+      </button>
+      <button class="tab-tab" data-tab="maand">
+        <span class="tab-index">03</span>
+        <span class="tab-label">Maandoverzicht</span>
+      </button>
+      <button class="tab-tab" data-tab="jaar">
+        <span class="tab-index">04</span>
+        <span class="tab-label">Jaaroverzicht</span>
+      </button>
+      <button class="tab-tab" data-tab="totaal">
+        <span class="tab-index">05</span>
+        <span class="tab-label">Totaaloverzicht</span>
+      </button>
+      <button class="tab-tab" data-tab="instellingen">
+        <span class="tab-index">06</span>
+        <span class="tab-label">Instellingen</span>
+      </button>
+    </nav>
+
+    <main class="tab-content">
+
+      <!-- TAB: INVOER -->
+      <section class="tab-pane active" id="pane-invoer">
+        <h2 class="pane-title">Afschriften uploaden</h2>
+        <p class="pane-lead">Upload elke maand de ING CSV-export van beide rekeningen. Dubbele transacties worden automatisch herkend en overgeslagen.</p>
+
+        <div class="upload-grid">
+          <div class="upload-card">
+            <label class="upload-card-label" id="labelPerson1">Persoon 1</label>
+            <input type="file" id="filePerson1" accept=".csv" hidden>
+            <button class="btn btn-outline" id="btnPerson1">CSV kiezen</button>
+            <span class="upload-filename" id="filenamePerson1">geen bestand gekozen</span>
+          </div>
+          <div class="upload-card">
+            <label class="upload-card-label" id="labelPerson2">Persoon 2</label>
+            <input type="file" id="filePerson2" accept=".csv" hidden>
+            <button class="btn btn-outline" id="btnPerson2">CSV kiezen</button>
+            <span class="upload-filename" id="filenamePerson2">geen bestand gekozen</span>
+          </div>
+        </div>
+
+        <div id="uploadResult" class="upload-result" hidden></div>
+
+        <h2 class="pane-title pane-title-spaced">Data beheren</h2>
+        <p class="pane-lead">De site draait zonder server: alles wordt in je browser bewaard. Maak regelmatig een back-up-bestand, zodat je op een ander apparaat verder kunt.</p>
+        <div class="data-actions">
+          <button class="btn btn-solid" id="btnExportData">Back-up downloaden (.json)</button>
+          <button class="btn btn-outline" id="btnImportData">Back-up inladen</button>
+          <input type="file" id="fileImportData" accept=".json" hidden>
+          <button class="btn btn-ghost-danger" id="btnResetData">Alles wissen</button>
+        </div>
+      </section>
+
+      <!-- TAB: CATEGORISEREN -->
+      <section class="tab-pane" id="pane-categoriseren">
+        <h2 class="pane-title">Categoriseren</h2>
+        <p class="pane-lead">Deze transacties zijn nog niet automatisch herkend. Ken een categorie toe &mdash; bij "onthoud dit" wordt de winkelnaam voortaan automatisch herkend.</p>
+        <div id="categorizeList" class="categorize-list"></div>
+        <p class="empty-state" id="categorizeEmpty" hidden>Alles is gecategoriseerd. Mooi werk.</p>
+      </section>
+
+      <!-- TAB: MAAND -->
+      <section class="tab-pane" id="pane-maand">
+        <div class="pane-header-row">
+          <h2 class="pane-title">Maandoverzicht</h2>
+          <select id="maandSelect" class="select-input"></select>
+        </div>
+
+        <div class="saldo-band" id="maandSaldoBand"></div>
+
+        <div class="split-grid">
+          <div class="panel">
+            <h3 class="panel-title">Wie geeft wat uit</h3>
+            <canvas id="chartMaandPersonen" height="220"></canvas>
+          </div>
+          <div class="panel">
+            <h3 class="panel-title">Uitgaven per categorie</h3>
+            <canvas id="chartMaandCategorie" height="220"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Categorie-tabel</h3>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableMaandCategorie"></table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Alle transacties deze maand</h3>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableMaandTransacties"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: JAAR -->
+      <section class="tab-pane" id="pane-jaar">
+        <div class="pane-header-row">
+          <h2 class="pane-title">Jaaroverzicht</h2>
+          <select id="jaarSelect" class="select-input"></select>
+        </div>
+
+        <div class="saldo-band" id="jaarSaldoBand"></div>
+
+        <div class="panel">
+          <h3 class="panel-title">Inkomsten, uitgaven en sparen per maand</h3>
+          <canvas id="chartJaarMaanden" height="240"></canvas>
+        </div>
+
+        <div class="split-grid">
+          <div class="panel">
+            <h3 class="panel-title">Uitgaven per categorie dit jaar</h3>
+            <canvas id="chartJaarCategorie" height="240"></canvas>
+          </div>
+          <div class="panel">
+            <h3 class="panel-title">Wie geeft wat uit dit jaar</h3>
+            <canvas id="chartJaarPersonen" height="240"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Categorie-tabel</h3>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableJaarCategorie"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: TOTAAL -->
+      <section class="tab-pane" id="pane-totaal">
+        <h2 class="pane-title">Totaaloverzicht</h2>
+        <p class="pane-lead">Alle maanden en jaren samen, sinds de eerste upload.</p>
+
+        <div class="saldo-band" id="totaalSaldoBand"></div>
+
+        <div class="panel">
+          <h3 class="panel-title">Spaarsaldo door de tijd</h3>
+          <canvas id="chartTotaalTijdlijn" height="240"></canvas>
+        </div>
+
+        <div class="split-grid">
+          <div class="panel">
+            <h3 class="panel-title">Uitgaven per categorie, totaal</h3>
+            <canvas id="chartTotaalCategorie" height="240"></canvas>
+          </div>
+          <div class="panel">
+            <h3 class="panel-title">Wie geeft wat uit, totaal</h3>
+            <canvas id="chartTotaalPersonen" height="240"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Categorie-tabel</h3>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableTotaalCategorie"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: INSTELLINGEN -->
+      <section class="tab-pane" id="pane-instellingen">
+        <h2 class="pane-title">Instellingen</h2>
+
+        <div class="panel">
+          <h3 class="panel-title">Namen</h3>
+          <div class="settings-row">
+            <label>Persoon 1</label>
+            <input type="text" id="nameInputP1" class="text-input">
+          </div>
+          <div class="settings-row">
+            <label>Persoon 2</label>
+            <input type="text" id="nameInputP2" class="text-input">
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Categorieën</h3>
+          <div id="categoryManageList" class="category-manage-list"></div>
+          <div class="add-row">
+            <input type="text" id="newCategoryName" class="text-input" placeholder="Nieuwe categorie">
+            <input type="color" id="newCategoryColor" value="#8A8272">
+            <button class="btn btn-outline" id="btnAddCategory">Toevoegen</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Herkenningsregels</h3>
+          <p class="panel-lead-small">Tekst in de omschrijving die automatisch aan een categorie wordt gekoppeld bij het uploaden.</p>
+          <div id="ruleManageList" class="rule-manage-list"></div>
+          <div class="add-row">
+            <input type="text" id="newRuleKeyword" class="text-input" placeholder="bv. albert heijn">
+            <select id="newRuleCategory" class="select-input"></select>
+            <button class="btn btn-outline" id="btnAddRule">Toevoegen</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
