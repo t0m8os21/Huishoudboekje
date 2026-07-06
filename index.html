@@ -45,12 +45,16 @@
         <span class="tab-index">04</span>
         <span class="tab-label">Jaaroverzicht</span>
       </button>
-      <button class="tab-tab" data-tab="totaal">
+      <button class="tab-tab" data-tab="vermogen">
         <span class="tab-index">05</span>
+        <span class="tab-label">Vermogensopbouw</span>
+      </button>
+      <button class="tab-tab" data-tab="totaal">
+        <span class="tab-index">06</span>
         <span class="tab-label">Totaaloverzicht</span>
       </button>
       <button class="tab-tab" data-tab="instellingen">
-        <span class="tab-index">06</span>
+        <span class="tab-index">07</span>
         <span class="tab-label">Instellingen</span>
       </button>
     </nav>
@@ -129,8 +133,18 @@
           </div>
         </div>
 
+        <div class="panel" id="panelMaandSparen">
+          <h3 class="panel-title">Naar spaarpotjes deze maand</h3>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableMaandSparen"></table>
+          </div>
+        </div>
+
         <div class="panel">
-          <h3 class="panel-title">Alle transacties deze maand</h3>
+          <div class="pane-header-row" style="margin-bottom:12px;">
+            <h3 class="panel-title" style="margin:0;">Alle transacties deze maand</h3>
+            <select id="maandCategorieFilter" class="select-input"></select>
+          </div>
           <div class="table-wrap">
             <table class="ledger-table" id="tableMaandTransacties"></table>
           </div>
@@ -166,6 +180,57 @@
           <h3 class="panel-title">Categorie-tabel</h3>
           <div class="table-wrap">
             <table class="ledger-table" id="tableJaarCategorie"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: VERMOGEN -->
+      <section class="tab-pane" id="pane-vermogen">
+        <h2 class="pane-title">Vermogensopbouw</h2>
+        <p class="pane-lead">Houd bij hoeveel er in welke spaarpotjes zit en van wie dat is. Transacties in de categorie "Sparen" worden op basis van de tegenrekening automatisch aan een potje gekoppeld, maar dit kan altijd handmatig aangepast worden.</p>
+
+        <div class="saldo-band" id="vermogenSaldoBand"></div>
+
+        <div class="panel">
+          <div class="pane-header-row" style="margin-bottom:14px;">
+            <h3 class="panel-title" style="margin:0;">Spaarpotjes</h3>
+          </div>
+          <div id="potList" class="pot-list"></div>
+          <div class="add-row add-row-pot">
+            <input type="text" id="newPotName" class="text-input" placeholder="Naam potje (bv. Vakantie)">
+            <select id="newPotOwner" class="select-input"></select>
+            <input type="number" step="0.01" id="newPotStart" class="text-input" placeholder="Startsaldo (€)" value="0">
+            <button class="btn btn-outline" id="btnAddPot">Potje toevoegen</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="pane-header-row align-top">
+            <div>
+              <h3 class="panel-title" style="margin-bottom:4px;">Nog te koppelen aan een potje</h3>
+              <p class="panel-lead-small">Deze spaartransacties zijn nog niet aan een potje gekoppeld.</p>
+            </div>
+            <button class="btn btn-outline" id="btnReapplyPotRules">Opnieuw automatisch koppelen</button>
+          </div>
+          <div id="potUnlinkedList" class="categorize-list"></div>
+          <p class="empty-state" id="potUnlinkedEmpty" hidden>Alle spaartransacties zijn gekoppeld.</p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Alle spaartransacties</h3>
+          <p class="panel-lead-small">Hier kun je de koppeling van elke spaartransactie op elk moment handmatig corrigeren.</p>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableVermogenTransacties"></table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Koppelregels (op tegenrekening of tekst)</h3>
+          <div id="potRuleManageList" class="rule-manage-list"></div>
+          <div class="add-row">
+            <input type="text" id="newPotRuleKeyword" class="text-input" placeholder="bv. NL12INGB0001234567 of een woord uit de omschrijving">
+            <select id="newPotRuleTarget" class="select-input"></select>
+            <button class="btn btn-outline" id="btnAddPotRule">Toevoegen</button>
           </div>
         </div>
       </section>
