@@ -37,7 +37,19 @@ Onder **Instellingen** kun je:
 - herkenningsregels beheren (welke tekst in een omschrijving hoort bij welke categorie),
 - een categorie markeren als "telt niet mee in saldo" — handig voor overboekingen tussen jullie eigen rekeningen of overboekingen naar een spaarrekening, zodat die niet als "uitgave" meetellen in het spaarsaldo.
 
-## Beperkingen
+## Vermogensopbouw
+
+Onder het tabblad **Vermogensopbouw** houd je spaarpotjes bij (bijvoorbeeld "Vakantie" of "Noodfonds"), inclusief van wie elk potje is en wat het startsaldo was. Potjes voeg je zelf handmatig toe.
+
+Transacties in de categorie "Sparen" worden automatisch aan een potje gekoppeld op basis van de tegenrekening (of een stukje tekst uit de omschrijving) — dezelfde spaarrekening wordt zo voortaan herkend. Nog niet gekoppelde transacties verschijnen bovenaan het tabblad; onderaan staat een tabel met **alle** spaartransacties, waar je de koppeling altijd handmatig kunt aanpassen. Er is ook een knop om alles opnieuw automatisch te koppelen op basis van de huidige regels.
+
+Deze spaartransacties tellen niet mee als "uitgave" in het spaarsaldo (het is immers geen geld dat weg is, alleen verplaatst), maar zijn wel gewoon zichtbaar in het **Maandoverzicht**, in een apart overzicht.
+
+## Filteren in het maandoverzicht
+
+Boven de transactietabel in het Maandoverzicht kun je filteren op categorie, zodat je bijvoorbeeld alleen "Boodschappen" van die maand ziet.
+
+
 
 - Werkt met het standaard ING CSV-exportformaat (kolommen: Datum, Naam / Omschrijving, Rekening, Tegenrekening, Code, Af Bij, Bedrag (EUR), Mutatiesoort, Mededelingen). Andere banken exporteren met andere kolomnamen; laat het weten als je die ondersteuning ook nodig hebt.
 - Er is geen wachtwoord op de pagina zelf — de bescherming zit in het wel of niet delen van de link/repository.
