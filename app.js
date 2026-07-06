@@ -179,6 +179,20 @@ function findCategoryForDescription(desc){
   return null;
 }
 
+function reapplyRules(){
+  let changed = 0;
+  for(const t of state.transactions){
+    if(t.amount >= 0) continue; // rules are only meant for expenses
+    const fullDesc = (t.description + ' ' + (t.details || '')).trim();
+    const matched = findCategoryForDescription(fullDesc);
+    if(matched && matched !== t.category){
+      t.category = matched;
+      changed++;
+    }
+  }
+  return changed;
+}
+
 function rowLooksLikeHeader(row){
   // A header row contains column names like "Datum"; a data row starts with
   // an 8-digit date (yyyymmdd). Some newer ING exports have no header at all.
@@ -494,18 +508,35 @@ function renderMaandTab(){
   if(sorted.length === 0){
     html += `<tr><td colspan="5" class="empty-state">Geen transacties.</td></tr>`;
   }
+  const catOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   for(const t of sorted){
-    const cat = t.category ? categoryById(t.category) : null;
-    html += `<tr>
+    html += `<tr data-id="${t.id}">
       <td>${t.date}</td>
       <td>${escapeHtml(t.description)}</td>
       <td><span class="person-tag">${state.people[t.person]}</span></td>
-      <td>${cat ? `<span class="cat-dot" style="background:${cat.color}"></span>${cat.name}` : '<em>onbekend</em>'}</td>
+      <td>
+        <select class="select-input edit-cat-select">
+          <option value="">&mdash; geen categorie &mdash;</option>
+          ${catOptions}
+        </select>
+      </td>
       <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
     </tr>`;
   }
   html += '</tbody>';
   tableEl.innerHTML = html;
+
+  tableEl.querySelectorAll('tr[data-id]').forEach(row => {
+    const select = row.querySelector('.edit-cat-select');
+    const tx = txs.find(t => t.id === row.dataset.id);
+    if(!select || !tx) return;
+    select.value = tx.category || '';
+    select.addEventListener('change', (e) => {
+      tx.category = e.target.value || null;
+      saveState();
+      refreshAll();
+    });
+  });
 }
 
 /* ===================== Tab: Jaar ===================== */
@@ -703,9 +734,23 @@ function refreshAll(){
   }
 }
 
+const TAB_RENDERERS = {
+  categoriseren: renderCategorizeTab,
+  maand: renderMaandTab,
+  jaar: renderJaarTab,
+  totaal: renderTotaalTab,
+  instellingen: renderInstellingenTab,
+};
+
 function switchTab(tabName){
   document.querySelectorAll('.tab-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tabName));
+  // Charts can only size themselves correctly once their canvas is actually
+  // visible, so re-render this tab now that its pane is no longer display:none.
+  const renderFn = TAB_RENDERERS[tabName];
+  if(renderFn){
+    try{ renderFn(); }catch(err){ console.error(`Fout bij het tekenen van "${tabName}":`, err); }
+  }
 }
 
 /* ===================== Event wiring ===================== */
@@ -734,6 +779,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('maandSelect').addEventListener('change', renderMaandTab);
   document.getElementById('jaarSelect').addEventListener('change', renderJaarTab);
+
+  document.getElementById('btnReapplyRules').addEventListener('click', () => {
+    if(!confirm('Dit controleert alle uitgaven opnieuw tegen je huidige herkenningsregels en kan al toegekende categorieën overschrijven als een regel ze anders indeelt. Doorgaan?')) return;
+    const changed = reapplyRules();
+    saveState();
+    refreshAll();
+    alert(changed > 0 ? `${changed} transactie(s) opnieuw ingedeeld.` : 'Geen wijzigingen: alle transacties komen al overeen met je huidige regels.');
+  });
 
   document.getElementById('nameInputP1').addEventListener('input', (e) => {
     state.people.p1 = e.target.value || 'Persoon 1';
