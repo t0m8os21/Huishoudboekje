@@ -91,8 +91,13 @@
 
       <!-- TAB: CATEGORISEREN -->
       <section class="tab-pane" id="pane-categoriseren">
-        <h2 class="pane-title">Categoriseren</h2>
-        <p class="pane-lead">Deze transacties zijn nog niet automatisch herkend. Ken een categorie toe &mdash; bij "onthoud dit" wordt de winkelnaam voortaan automatisch herkend.</p>
+        <div class="pane-header-row align-top">
+          <div>
+            <h2 class="pane-title">Categoriseren</h2>
+            <p class="pane-lead">Deze transacties zijn nog niet automatisch herkend. Ken een categorie toe &mdash; bij "onthoud dit" wordt de winkelnaam voortaan automatisch herkend.</p>
+          </div>
+          <button class="btn btn-outline" id="btnReapplyRules">Opnieuw automatisch categoriseren</button>
+        </div>
         <div id="categorizeList" class="categorize-list"></div>
         <p class="empty-state" id="categorizeEmpty" hidden>Alles is gecategoriseerd. Mooi werk.</p>
       </section>
