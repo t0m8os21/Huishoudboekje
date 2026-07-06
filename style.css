@@ -394,7 +394,7 @@ body{
 .category-manage-row input[type=color]{
   width: 26px; height: 26px; padding: 0; border: none; border-radius: 5px; background: none;
 }
-.category-manage-row .name{ flex: 1; }
+.category-manage-row .name-input{ flex: 1; min-width: 120px; }
 .rule-manage-row .kw{ font-family: "IBM Plex Mono", monospace; }
 .rule-manage-row .cat{ flex:1; color: var(--ink-soft); }
 .add-row{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
