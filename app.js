@@ -334,46 +334,54 @@ function renderCategoryTable(el, agg){
 }
 
 function renderCategoryPieChart(canvasId, agg){
-  const ctx = document.getElementById(canvasId);
-  destroyChart(canvasId);
-  const entries = Object.entries(agg.categoryTotals).sort((a,b)=>b[1]-a[1]);
-  const labels = entries.map(([id]) => (categoryById(id)||{name:id}).name);
-  const data = entries.map(([,v]) => v);
-  const colors = entries.map(([id]) => (categoryById(id)||{color:'#999'}).color);
-  charts[canvasId] = new Chart(ctx, {
-    type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#FBFAF6' }] },
-    options: {
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-      cutout: '58%',
-    }
-  });
+  try{
+    const ctx = document.getElementById(canvasId);
+    destroyChart(canvasId);
+    const entries = Object.entries(agg.categoryTotals).sort((a,b)=>b[1]-a[1]);
+    const labels = entries.map(([id]) => (categoryById(id)||{name:id}).name);
+    const data = entries.map(([,v]) => v);
+    const colors = entries.map(([id]) => (categoryById(id)||{color:'#999'}).color);
+    charts[canvasId] = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#FBFAF6' }] },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
+        cutout: '58%',
+      }
+    });
+  }catch(err){
+    console.error('Kon grafiek niet tekenen:', err);
+  }
 }
 
 function renderPersonBarChart(canvasId, agg){
-  const ctx = document.getElementById(canvasId);
-  destroyChart(canvasId);
-  const entries = Object.entries(agg.categoryTotals).sort((a,b)=>b[1]-a[1]);
-  const labels = entries.map(([id]) => (categoryById(id)||{name:id}).name);
-  const p1data = entries.map(([id]) => (agg.categoryByPerson[id]||{}).p1 || 0);
-  const p2data = entries.map(([id]) => (agg.categoryByPerson[id]||{}).p2 || 0);
-  charts[canvasId] = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: state.people.p1, data: p1data, backgroundColor: '#3C5A47' },
-        { label: state.people.p2, data: p2data, backgroundColor: '#AE5138' },
-      ]
-    },
-    options: {
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-      scales: {
-        x: { ticks: { font: { size: 10 } } },
-        y: { ticks: { callback: v => formatEUR(v) } }
+  try{
+    const ctx = document.getElementById(canvasId);
+    destroyChart(canvasId);
+    const entries = Object.entries(agg.categoryTotals).sort((a,b)=>b[1]-a[1]);
+    const labels = entries.map(([id]) => (categoryById(id)||{name:id}).name);
+    const p1data = entries.map(([id]) => (agg.categoryByPerson[id]||{}).p1 || 0);
+    const p2data = entries.map(([id]) => (agg.categoryByPerson[id]||{}).p2 || 0);
+    charts[canvasId] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: state.people.p1, data: p1data, backgroundColor: '#3C5A47' },
+          { label: state.people.p2, data: p2data, backgroundColor: '#AE5138' },
+        ]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
+        scales: {
+          x: { ticks: { font: { size: 10 } } },
+          y: { ticks: { callback: v => formatEUR(v) } }
+        }
       }
-    }
-  });
+    });
+  }catch(err){
+    console.error('Kon grafiek niet tekenen:', err);
+  }
 }
 
 /* ===================== Tab: Invoer (upload) ===================== */
@@ -531,20 +539,24 @@ function renderJaarTab(){
     netData.push(mAgg.net);
   }
   destroyChart('chartJaarMaanden');
-  charts['chartJaarMaanden'] = new Chart(document.getElementById('chartJaarMaanden'), {
-    data: {
-      labels,
-      datasets: [
-        { type: 'bar', label: 'Inkomsten', data: incomeData, backgroundColor: '#B7D0BD' },
-        { type: 'bar', label: 'Uitgaven', data: expenseData, backgroundColor: '#E3B7A7' },
-        { type: 'line', label: 'Gespaard', data: netData, borderColor: '#AD7E24', backgroundColor: '#AD7E24', tension: 0.25, borderWidth: 2, pointRadius: 3 },
-      ]
-    },
-    options: {
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-      scales: { y: { ticks: { callback: v => formatEUR(v) } } }
-    }
-  });
+  try{
+    charts['chartJaarMaanden'] = new Chart(document.getElementById('chartJaarMaanden'), {
+      data: {
+        labels,
+        datasets: [
+          { type: 'bar', label: 'Inkomsten', data: incomeData, backgroundColor: '#B7D0BD' },
+          { type: 'bar', label: 'Uitgaven', data: expenseData, backgroundColor: '#E3B7A7' },
+          { type: 'line', label: 'Gespaard', data: netData, borderColor: '#AD7E24', backgroundColor: '#AD7E24', tension: 0.25, borderWidth: 2, pointRadius: 3 },
+        ]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
+        scales: { y: { ticks: { callback: v => formatEUR(v) } } }
+      }
+    });
+  }catch(err){
+    console.error('Kon grafiek niet tekenen:', err);
+  }
 }
 
 /* ===================== Tab: Totaal ===================== */
@@ -569,19 +581,23 @@ function renderTotaalTab(){
     netPerMonth.push(mAgg.net);
   }
   destroyChart('chartTotaalTijdlijn');
-  charts['chartTotaalTijdlijn'] = new Chart(document.getElementById('chartTotaalTijdlijn'), {
-    data: {
-      labels,
-      datasets: [
-        { type: 'bar', label: 'Gespaard per maand', data: netPerMonth, backgroundColor: netPerMonth.map(v => v>=0 ? '#B7D0BD' : '#E3B7A7') },
-        { type: 'line', label: 'Cumulatief spaarsaldo', data: cumulative, borderColor: '#2A4534', backgroundColor: '#2A4534', tension: 0.2, borderWidth: 2, pointRadius: 2 },
-      ]
-    },
-    options: {
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-      scales: { y: { ticks: { callback: v => formatEUR(v) } }, x: { ticks: { maxRotation: 60, minRotation: 40, font: { size: 10 } } } }
-    }
-  });
+  try{
+    charts['chartTotaalTijdlijn'] = new Chart(document.getElementById('chartTotaalTijdlijn'), {
+      data: {
+        labels,
+        datasets: [
+          { type: 'bar', label: 'Gespaard per maand', data: netPerMonth, backgroundColor: netPerMonth.map(v => v>=0 ? '#B7D0BD' : '#E3B7A7') },
+          { type: 'line', label: 'Cumulatief spaarsaldo', data: cumulative, borderColor: '#2A4534', backgroundColor: '#2A4534', tension: 0.2, borderWidth: 2, pointRadius: 2 },
+        ]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
+        scales: { y: { ticks: { callback: v => formatEUR(v) } }, x: { ticks: { maxRotation: 60, minRotation: 40, font: { size: 10 } } } }
+      }
+    });
+  }catch(err){
+    console.error('Kon grafiek niet tekenen:', err);
+  }
 }
 
 /* ===================== Tab: Instellingen ===================== */
@@ -594,7 +610,7 @@ function renderInstellingenTab(){
   catList.innerHTML = state.categories.map(c => `
     <div class="category-manage-row" data-id="${c.id}">
       <input type="color" value="${c.color}" class="cat-color">
-      <span class="name">${c.name}</span>
+      <input type="text" value="${escapeHtml(c.name)}" class="text-input name-input">
       <label style="font-size:11.5px;color:var(--ink-soft);display:flex;align-items:center;gap:4px;">
         <input type="checkbox" class="cat-transfer" ${c.isTransfer ? 'checked' : ''}> telt niet mee in saldo
       </label>
@@ -605,18 +621,25 @@ function renderInstellingenTab(){
   catList.querySelectorAll('.category-manage-row').forEach(row => {
     const id = row.dataset.id;
     row.querySelector('.cat-color').addEventListener('input', (e) => {
-      categoryById(id).color = e.target.value;
-      saveState(); refreshAll();
+      const cat = categoryById(id);
+      if(cat){ cat.color = e.target.value; saveState(); refreshAll(); }
+    });
+    row.querySelector('.name-input').addEventListener('change', (e) => {
+      const cat = categoryById(id);
+      const newName = e.target.value.trim();
+      if(cat && newName){ cat.name = newName; saveState(); refreshAll(); }
     });
     row.querySelector('.cat-transfer').addEventListener('change', (e) => {
-      categoryById(id).isTransfer = e.target.checked;
-      saveState(); refreshAll();
+      const cat = categoryById(id);
+      if(cat){ cat.isTransfer = e.target.checked; saveState(); refreshAll(); }
     });
     row.querySelector('.remove-btn').addEventListener('click', () => {
       if(state.transactions.some(t => t.category === id)){
-        alert('Deze categorie is nog in gebruik bij transacties en kan niet verwijderd worden.');
+        alert('Deze categorie is nog in gebruik bij transacties en kan niet verwijderd worden. Ken die transacties eerst een andere categorie toe.');
         return;
       }
+      const cat = categoryById(id);
+      if(!confirm(`Categorie "${cat ? cat.name : id}" verwijderen?`)) return;
       state.categories = state.categories.filter(c => c.id !== id);
       state.rules = state.rules.filter(r => r.category !== id);
       saveState(); refreshAll();
@@ -661,12 +684,23 @@ function renderHeaderStrip(){
 /* ===================== Refresh / Tabs ===================== */
 
 function refreshAll(){
-  renderHeaderStrip();
-  renderCategorizeTab();
-  renderMaandTab();
-  renderJaarTab();
-  renderTotaalTab();
-  renderInstellingenTab();
+  const steps = [
+    ['header', renderHeaderStrip],
+    ['categoriseren', renderCategorizeTab],
+    ['maand', renderMaandTab],
+    ['jaar', renderJaarTab],
+    ['totaal', renderTotaalTab],
+    ['instellingen', renderInstellingenTab],
+  ];
+  for(const [name, fn] of steps){
+    try{
+      fn();
+    }catch(err){
+      // A failure in one section (e.g. a chart) must never block the others
+      // from rendering, otherwise the whole app can appear "stuck".
+      console.error(`Fout bij het bijwerken van "${name}":`, err);
+    }
+  }
 }
 
 function switchTab(tabName){
