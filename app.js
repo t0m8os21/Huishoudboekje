@@ -302,9 +302,166 @@ function aggregate(transactions){
 
 /* ===================== Rendering: shared ===================== */
 
-const charts = {}; // key -> Chart instance
-function destroyChart(key){
-  if(charts[key]){ charts[key].destroy(); delete charts[key]; }
+function escapeAttr(str){
+  return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function renderCategoryDonut(mountId, agg){
+  const el = document.getElementById(mountId);
+  if(!el) return;
+  const entries = Object.entries(agg.categoryTotals).sort((a,b) => b[1]-a[1]);
+  const total = entries.reduce((s,[,v]) => s+v, 0);
+  if(entries.length === 0 || total <= 0){
+    el.innerHTML = '<p class="empty-state">Nog geen uitgaven in deze periode.</p>';
+    return;
+  }
+  const size = 176, radius = 68, stroke = 24, c = size/2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  let arcs = '';
+  for(const [id, val] of entries){
+    const cat = categoryById(id) || { name: id, color: '#96A0A6' };
+    const frac = val / total;
+    const dash = Math.max(frac * circumference, 0.6); // keep tiny slivers visible
+    arcs += `<circle cx="${c}" cy="${c}" r="${radius}" fill="none" stroke="${cat.color}" stroke-width="${stroke}"
+      stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}"
+      transform="rotate(-90 ${c} ${c})"><title>${escapeAttr(cat.name)}: ${formatEUR(val)}</title></circle>`;
+    offset += dash;
+  }
+  const legend = entries.map(([id, val]) => {
+    const cat = categoryById(id) || { name: id, color: '#96A0A6' };
+    const pct = Math.round((val/total) * 100);
+    return `<div class="legend-row"><span class="cat-dot" style="background:${cat.color}"></span>${cat.name}<span class="legend-val">${formatEUR(val)} · ${pct}%</span></div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="donut-wrap">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="Uitgaven per categorie">${arcs}</svg>
+      <div class="donut-legend">${legend}</div>
+    </div>
+  `;
+}
+
+function renderPersonBars(mountId, agg){
+  const el = document.getElementById(mountId);
+  if(!el) return;
+  const entries = Object.entries(agg.categoryTotals).sort((a,b) => b[1]-a[1]);
+  if(entries.length === 0){
+    el.innerHTML = '<p class="empty-state">Nog geen uitgaven in deze periode.</p>';
+    return;
+  }
+  const max = Math.max(1, ...entries.map(([id]) => {
+    const bp = agg.categoryByPerson[id] || {};
+    return Math.max(bp.p1 || 0, bp.p2 || 0);
+  }));
+  const blocks = entries.map(([id]) => {
+    const cat = categoryById(id) || { name: id };
+    const bp = agg.categoryByPerson[id] || {};
+    const w1 = Math.round(((bp.p1 || 0) / max) * 100);
+    const w2 = Math.round(((bp.p2 || 0) / max) * 100);
+    return `
+      <div class="bar-block">
+        <div class="bar-cat-label">${cat.name}</div>
+        <div class="bar-row"><div class="bar-track"><div class="bar-fill p1" style="width:${w1}%"></div></div><span class="bar-val">${formatEUR(bp.p1 || 0)}</span></div>
+        <div class="bar-row"><div class="bar-track"><div class="bar-fill p2" style="width:${w2}%"></div></div><span class="bar-val">${formatEUR(bp.p2 || 0)}</span></div>
+      </div>
+    `;
+  }).join('');
+  el.innerHTML = `
+    <div class="bar-legend">
+      <span><span class="cat-dot" style="background:#3C5A47"></span>${state.people.p1}</span>
+      <span><span class="cat-dot" style="background:#AE5138"></span>${state.people.p2}</span>
+    </div>
+    ${blocks}
+  `;
+}
+
+/**
+ * Dependency-free combo chart (grouped/overlaid bars + an optional line),
+ * drawn as plain SVG so it never depends on an external charting library.
+ * bars: [{ label, color, data: number[] }]
+ * line: { label, color, data: number[] } | null
+ */
+function renderComboChart(mountId, labels, bars, line){
+  const el = document.getElementById(mountId);
+  if(!el) return;
+  if(labels.length === 0){
+    el.innerHTML = '<p class="empty-state">Nog geen data.</p>';
+    return;
+  }
+  const width = Math.max(460, labels.length * 74);
+  const height = 250;
+  const padL = 58, padR = 14, padT = 12, padB = 46;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+
+  const allVals = bars.flatMap(b => b.data).concat(line ? line.data : []);
+  const maxVal = Math.max(0, ...allVals);
+  const minVal = Math.min(0, ...allVals);
+  const range = (maxVal - minVal) || 1;
+  const yOf = v => padT + plotH - ((v - minVal) / range) * plotH;
+  const zeroY = yOf(0);
+
+  const slotW = plotW / labels.length;
+  const groupW = slotW * 0.68;
+  const barW = bars.length ? groupW / bars.length : 0;
+
+  let rects = '';
+  labels.forEach((lab, i) => {
+    const groupX = padL + i * slotW + (slotW - groupW) / 2;
+    bars.forEach((b, bi) => {
+      const val = b.data[i] || 0;
+      const x = groupX + bi * barW;
+      const y = Math.min(yOf(val), zeroY);
+      const h = Math.max(Math.abs(yOf(val) - zeroY), 0.6);
+      const fill = typeof b.colorFn === 'function' ? b.colorFn(val) : b.color;
+      rects += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(barW - 3, 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" rx="1.5">
+        <title>${escapeAttr(b.label)} — ${escapeAttr(lab)}: ${formatEUR(val)}</title></rect>`;
+    });
+  });
+
+  let linePath = '';
+  if(line){
+    const pts = labels.map((lab, i) => {
+      const x = padL + i * slotW + slotW / 2;
+      const y = yOf(line.data[i] || 0);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const circles = labels.map((lab, i) => {
+      const x = padL + i * slotW + slotW / 2;
+      const y = yOf(line.data[i] || 0);
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${line.color}">
+        <title>${escapeAttr(line.label)} — ${escapeAttr(lab)}: ${formatEUR(line.data[i] || 0)}</title></circle>`;
+    }).join('');
+    linePath = `<polyline points="${pts.join(' ')}" fill="none" stroke="${line.color}" stroke-width="2.5"/>${circles}`;
+  }
+
+  const ticks = 4;
+  let gridLines = '';
+  for(let t=0; t<=ticks; t++){
+    const val = minVal + (range * t / ticks);
+    const y = yOf(val);
+    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${width-padR}" y2="${y.toFixed(1)}" stroke="#E9E3D5" stroke-width="1"/>
+      <text x="${padL - 8}" y="${(y+3).toFixed(1)}" font-size="9.5" fill="#96A0A6" text-anchor="end">${Math.round(val).toLocaleString('nl-NL')}</text>`;
+  }
+  gridLines += `<line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${width-padR}" y2="${zeroY.toFixed(1)}" stroke="#B5AC94" stroke-width="1.2"/>`;
+
+  const xLabels = labels.map((lab, i) => {
+    const x = padL + i * slotW + slotW / 2;
+    return `<text x="${x.toFixed(1)}" y="${height-10}" font-size="9.5" fill="#62707A" text-anchor="end" transform="rotate(-40 ${x.toFixed(1)} ${height-10})">${lab}</text>`;
+  }).join('');
+
+  const legend = bars.map(b => `<span><span class="cat-dot" style="background:${b.color}"></span>${b.label}</span>`).join('')
+    + (line ? `<span><span class="cat-dot" style="background:${line.color}"></span>${line.label}</span>` : '');
+
+  el.innerHTML = `
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">
+      ${gridLines}
+      ${rects}
+      ${linePath}
+      ${xLabels}
+    </svg>
+    <div class="combo-chart-legend">${legend}</div>
+  `;
 }
 
 function renderSaldoBand(el, agg, extraLabel){
@@ -345,57 +502,6 @@ function renderCategoryTable(el, agg){
   }
   html += '</tbody>';
   el.innerHTML = html;
-}
-
-function renderCategoryPieChart(canvasId, agg){
-  try{
-    const ctx = document.getElementById(canvasId);
-    destroyChart(canvasId);
-    const entries = Object.entries(agg.categoryTotals).sort((a,b)=>b[1]-a[1]);
-    const labels = entries.map(([id]) => (categoryById(id)||{name:id}).name);
-    const data = entries.map(([,v]) => v);
-    const colors = entries.map(([id]) => (categoryById(id)||{color:'#999'}).color);
-    charts[canvasId] = new Chart(ctx, {
-      type: 'doughnut',
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#FBFAF6' }] },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-        cutout: '58%',
-      }
-    });
-  }catch(err){
-    console.error('Kon grafiek niet tekenen:', err);
-  }
-}
-
-function renderPersonBarChart(canvasId, agg){
-  try{
-    const ctx = document.getElementById(canvasId);
-    destroyChart(canvasId);
-    const entries = Object.entries(agg.categoryTotals).sort((a,b)=>b[1]-a[1]);
-    const labels = entries.map(([id]) => (categoryById(id)||{name:id}).name);
-    const p1data = entries.map(([id]) => (agg.categoryByPerson[id]||{}).p1 || 0);
-    const p2data = entries.map(([id]) => (agg.categoryByPerson[id]||{}).p2 || 0);
-    charts[canvasId] = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          { label: state.people.p1, data: p1data, backgroundColor: '#3C5A47' },
-          { label: state.people.p2, data: p2data, backgroundColor: '#AE5138' },
-        ]
-      },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-        scales: {
-          x: { ticks: { font: { size: 10 } } },
-          y: { ticks: { callback: v => formatEUR(v) } }
-        }
-      }
-    });
-  }catch(err){
-    console.error('Kon grafiek niet tekenen:', err);
-  }
 }
 
 /* ===================== Tab: Invoer (upload) ===================== */
@@ -498,8 +604,8 @@ function renderMaandTab(){
   const agg = aggregate(txs);
 
   renderSaldoBand(document.getElementById('maandSaldoBand'), agg);
-  renderPersonBarChart('chartMaandPersonen', agg);
-  renderCategoryPieChart('chartMaandCategorie', agg);
+  renderPersonBars('chartMaandPersonen', agg);
+  renderCategoryDonut('chartMaandCategorie', agg);
   renderCategoryTable(document.getElementById('tableMaandCategorie'), agg);
 
   const tableEl = document.getElementById('tableMaandTransacties');
@@ -555,8 +661,8 @@ function renderJaarTab(){
   const agg = aggregate(txs);
 
   renderSaldoBand(document.getElementById('jaarSaldoBand'), agg, 'Gespaard dit jaar');
-  renderCategoryPieChart('chartJaarCategorie', agg);
-  renderPersonBarChart('chartJaarPersonen', agg);
+  renderCategoryDonut('chartJaarCategorie', agg);
+  renderPersonBars('chartJaarPersonen', agg);
   renderCategoryTable(document.getElementById('tableJaarCategorie'), agg);
 
   // Per-month breakdown within year
@@ -569,25 +675,15 @@ function renderJaarTab(){
     expenseData.push(mAgg.totalExpense);
     netData.push(mAgg.net);
   }
-  destroyChart('chartJaarMaanden');
-  try{
-    charts['chartJaarMaanden'] = new Chart(document.getElementById('chartJaarMaanden'), {
-      data: {
-        labels,
-        datasets: [
-          { type: 'bar', label: 'Inkomsten', data: incomeData, backgroundColor: '#B7D0BD' },
-          { type: 'bar', label: 'Uitgaven', data: expenseData, backgroundColor: '#E3B7A7' },
-          { type: 'line', label: 'Gespaard', data: netData, borderColor: '#AD7E24', backgroundColor: '#AD7E24', tension: 0.25, borderWidth: 2, pointRadius: 3 },
-        ]
-      },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-        scales: { y: { ticks: { callback: v => formatEUR(v) } } }
-      }
-    });
-  }catch(err){
-    console.error('Kon grafiek niet tekenen:', err);
-  }
+  renderComboChart(
+    'chartJaarMaanden',
+    labels,
+    [
+      { label: 'Inkomsten', color: '#B7D0BD', data: incomeData },
+      { label: 'Uitgaven', color: '#E3B7A7', data: expenseData },
+    ],
+    { label: 'Gespaard', color: '#AD7E24', data: netData }
+  );
 }
 
 /* ===================== Tab: Totaal ===================== */
@@ -596,8 +692,8 @@ function renderTotaalTab(){
   const txs = state.transactions;
   const agg = aggregate(txs);
   renderSaldoBand(document.getElementById('totaalSaldoBand'), agg, 'Totaal gespaard');
-  renderCategoryPieChart('chartTotaalCategorie', agg);
-  renderPersonBarChart('chartTotaalPersonen', agg);
+  renderCategoryDonut('chartTotaalCategorie', agg);
+  renderPersonBars('chartTotaalPersonen', agg);
   renderCategoryTable(document.getElementById('tableTotaalCategorie'), agg);
 
   const months = getMonthsAvailable();
@@ -611,24 +707,14 @@ function renderTotaalTab(){
     cumulative.push(running);
     netPerMonth.push(mAgg.net);
   }
-  destroyChart('chartTotaalTijdlijn');
-  try{
-    charts['chartTotaalTijdlijn'] = new Chart(document.getElementById('chartTotaalTijdlijn'), {
-      data: {
-        labels,
-        datasets: [
-          { type: 'bar', label: 'Gespaard per maand', data: netPerMonth, backgroundColor: netPerMonth.map(v => v>=0 ? '#B7D0BD' : '#E3B7A7') },
-          { type: 'line', label: 'Cumulatief spaarsaldo', data: cumulative, borderColor: '#2A4534', backgroundColor: '#2A4534', tension: 0.2, borderWidth: 2, pointRadius: 2 },
-        ]
-      },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'IBM Plex Sans', size: 11 } } } },
-        scales: { y: { ticks: { callback: v => formatEUR(v) } }, x: { ticks: { maxRotation: 60, minRotation: 40, font: { size: 10 } } } }
-      }
-    });
-  }catch(err){
-    console.error('Kon grafiek niet tekenen:', err);
-  }
+  renderComboChart(
+    'chartTotaalTijdlijn',
+    labels,
+    [
+      { label: 'Gespaard per maand', color: '#C9B98C', colorFn: v => v >= 0 ? '#B7D0BD' : '#E3B7A7', data: netPerMonth },
+    ],
+    { label: 'Cumulatief spaarsaldo', color: '#2A4534', data: cumulative }
+  );
 }
 
 /* ===================== Tab: Instellingen ===================== */
