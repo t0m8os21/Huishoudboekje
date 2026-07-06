@@ -427,6 +427,50 @@ body{
 .combo-chart-legend{ display: flex; gap: 18px; font-size: 12px; margin-top: 6px; color: var(--ink-soft); flex-wrap: wrap; }
 .combo-chart-legend span{ display: flex; align-items: center; gap: 5px; }
 
+/* ---------- Pots (Vermogensopbouw) ---------- */
+.pot-list{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pot-card{
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--paper);
+}
+.pot-card .pot-name-input{
+  font-family: "Fraunces", serif;
+  font-weight: 600;
+  font-size: 15px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  margin-bottom: 6px;
+}
+.pot-card .pot-name-input:focus{ outline: none; border-bottom: 1px dashed var(--gold); }
+.pot-card .pot-balance{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 4px 0 10px;
+}
+.pot-card .pot-balance.neg{ color: var(--brick); }
+.pot-card .pot-balance.pos{ color: var(--forest); }
+.pot-card-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.pot-card-row label{ font-size: 11px; color: var(--ink-faint); width: 62px; flex-shrink: 0; }
+.pot-card .remove-btn{ margin-left: auto; }
+.add-row-pot{ align-items: center; }
+.add-row-pot input[type=number]{ max-width: 130px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 880px){
   .ledger-body{ flex-direction: column; }
