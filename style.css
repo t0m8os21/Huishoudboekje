@@ -179,6 +179,8 @@ body{
   gap: 12px;
   margin-bottom: 18px;
 }
+.pane-header-row.align-top{ align-items: flex-start; }
+.pane-header-row.align-top .pane-lead{ margin-bottom: 0; }
 
 /* ---------- Upload ---------- */
 .upload-grid{
