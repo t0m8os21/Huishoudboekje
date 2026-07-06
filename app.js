@@ -58,7 +58,9 @@ function defaultState(){
     people: { p1: 'Persoon 1', p2: 'Persoon 2' },
     categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
     rules: JSON.parse(JSON.stringify(DEFAULT_RULES)),
-    transactions: [], // {id, date, person, description, tegenrekening, amount, category}
+    transactions: [], // {id, date, person, description, tegenrekening, amount, category, potId}
+    pots: [], // {id, name, owner: 'p1'|'p2'|'samen', startBalance, color}
+    potRules: [], // {keyword, potId} matched against tegenrekening + omschrijving
   };
 }
 
@@ -70,6 +72,8 @@ function loadState(){
     // basic shape guard
     if(!parsed.people || !parsed.categories || !parsed.transactions) return defaultState();
     if(!parsed.rules) parsed.rules = JSON.parse(JSON.stringify(DEFAULT_RULES));
+    if(!parsed.pots) parsed.pots = [];
+    if(!parsed.potRules) parsed.potRules = [];
     return parsed;
   }catch(e){
     console.error('Kon opgeslagen data niet lezen, begin opnieuw.', e);
@@ -189,8 +193,59 @@ function reapplyRules(){
       t.category = matched;
       changed++;
     }
+    maybeAutoAssignPot(t);
   }
   return changed;
+}
+
+/* ----- Spaarpotjes (Vermogensopbouw) ----- */
+
+function potById(id){
+  return state.pots.find(p => p.id === id);
+}
+
+function findPotForTransaction(t){
+  const haystack = [t.tegenrekening || '', t.description || '', t.details || ''].join(' ').toLowerCase();
+  for(const rule of state.potRules){
+    if(rule.keyword && haystack.includes(rule.keyword.toLowerCase())){
+      return rule.potId;
+    }
+  }
+  return null;
+}
+
+function maybeAutoAssignPot(t){
+  if(t.category === 'sparen' && !t.potId){
+    const matched = findPotForTransaction(t);
+    if(matched) t.potId = matched;
+  }
+}
+
+function reapplyPotRules(){
+  let changed = 0;
+  for(const t of state.transactions){
+    if(t.category !== 'sparen') continue;
+    const matched = findPotForTransaction(t);
+    if(matched && matched !== t.potId){
+      t.potId = matched;
+      changed++;
+    }
+  }
+  return changed;
+}
+
+function getSparenTransactions(){
+  return state.transactions.filter(t => t.category === 'sparen');
+}
+
+function computePotBalance(potId){
+  const pot = potById(potId);
+  if(!pot) return 0;
+  let balance = pot.startBalance || 0;
+  for(const t of state.transactions){
+    if(t.potId === potId) balance += -t.amount; // money leaving checking = deposit into pot
+  }
+  return balance;
 }
 
 function rowLooksLikeHeader(row){
@@ -248,14 +303,17 @@ function parseINGFile(text, personKey){
     const category = findCategoryForDescription(fullDesc);
     if(!category) needsCategory++;
 
-    state.transactions.push({
+    const newTx = {
       id, date, person: personKey,
       description: naam,
       details: mededelingen,
       tegenrekening: tegen,
       amount,
       category,
-    });
+      potId: null,
+    };
+    maybeAutoAssignPot(newTx);
+    state.transactions.push(newTx);
     existingIds.add(id);
     added++;
   }
@@ -570,6 +628,7 @@ function renderCategorizeTab(){
       if(!catId) { select.focus(); return; }
       const tx = state.transactions.find(t => t.id === id);
       tx.category = catId;
+      maybeAutoAssignPot(tx);
       if(remember){
         const keyword = tx.description.trim().toLowerCase().slice(0, 40);
         if(keyword && !state.rules.some(r => r.keyword.toLowerCase() === keyword)){
@@ -608,11 +667,49 @@ function renderMaandTab(){
   renderCategoryDonut('chartMaandCategorie', agg);
   renderCategoryTable(document.getElementById('tableMaandCategorie'), agg);
 
+  // Sparen-transacties zijn uitgesloten van het spaarsaldo (het zijn geen
+  // echte uitgaven), maar moeten wel gewoon zichtbaar zijn in dit overzicht.
+  const sparenTxs = txs.filter(t => t.category === 'sparen').sort((a,b) => b.date.localeCompare(a.date));
+  const sparenEl = document.getElementById('tableMaandSparen');
+  if(sparenTxs.length === 0){
+    sparenEl.innerHTML = `<tbody><tr><td class="empty-state">Geen overboekingen naar spaarpotjes deze maand.</td></tr></tbody>`;
+  } else {
+    const sparenTotal = sparenTxs.reduce((s,t) => s + (-t.amount), 0);
+    let sHtml = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th>Potje</th><th class="num">Bedrag</th></tr></thead><tbody>`;
+    for(const t of sparenTxs){
+      const pot = t.potId ? potById(t.potId) : null;
+      sHtml += `<tr>
+        <td>${t.date}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td><span class="person-tag">${state.people[t.person]}</span></td>
+        <td>${pot ? pot.name : '<em>nog niet gekoppeld</em>'}</td>
+        <td class="num ${(-t.amount) >= 0 ? 'pos' : 'neg'}">${formatEUR(-t.amount)}</td>
+      </tr>`;
+    }
+    sHtml += `</tbody><tfoot><tr><td colspan="4" style="font-weight:600;">Totaal naar potjes</td><td class="num pos" style="font-weight:600;">${formatEUR(sparenTotal)}</td></tr></tfoot>`;
+    sparenEl.innerHTML = sHtml;
+  }
+
+  // Categoriefilter voor de onderstaande transactietabel
+  const filterSelect = document.getElementById('maandCategorieFilter');
+  const prevFilter = filterSelect.value;
+  filterSelect.innerHTML = `<option value="">Alle categorieën</option>` +
+    state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('') +
+    `<option value="__none__">Zonder categorie</option>`;
+  filterSelect.value = [...filterSelect.options].some(o => o.value === prevFilter) ? prevFilter : '';
+
+  const activeFilter = filterSelect.value;
+  const filteredTxs = txs.filter(t => {
+    if(!activeFilter) return true;
+    if(activeFilter === '__none__') return !t.category;
+    return t.category === activeFilter;
+  });
+
   const tableEl = document.getElementById('tableMaandTransacties');
-  const sorted = [...txs].sort((a,b) => b.date.localeCompare(a.date));
+  const sorted = [...filteredTxs].sort((a,b) => b.date.localeCompare(a.date));
   let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th>Categorie</th><th class="num">Bedrag</th></tr></thead><tbody>`;
   if(sorted.length === 0){
-    html += `<tr><td colspan="5" class="empty-state">Geen transacties.</td></tr>`;
+    html += `<tr><td colspan="5" class="empty-state">Geen transacties${activeFilter ? ' voor deze filter' : ''}.</td></tr>`;
   }
   const catOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   for(const t of sorted){
@@ -639,6 +736,7 @@ function renderMaandTab(){
     select.value = tx.category || '';
     select.addEventListener('change', (e) => {
       tx.category = e.target.value || null;
+      maybeAutoAssignPot(tx);
       saveState();
       refreshAll();
     });
@@ -684,6 +782,196 @@ function renderJaarTab(){
     ],
     { label: 'Gespaard', color: '#AD7E24', data: netData }
   );
+}
+
+/* ===================== Tab: Vermogensopbouw ===================== */
+
+function ownerLabel(owner){
+  if(owner === 'p1') return state.people.p1;
+  if(owner === 'p2') return state.people.p2;
+  return 'Samen';
+}
+
+function populateOwnerSelect(selectEl, selected){
+  selectEl.innerHTML = `
+    <option value="p1">${state.people.p1}</option>
+    <option value="p2">${state.people.p2}</option>
+    <option value="samen">Samen</option>
+  `;
+  if(selected) selectEl.value = selected;
+}
+
+function renderVermogenTab(){
+  // Saldo band: totaal vermogen + per eigenaar
+  const balances = state.pots.map(p => ({ pot: p, balance: computePotBalance(p.id) }));
+  const total = balances.reduce((s, b) => s + b.balance, 0);
+  const byOwner = { p1: 0, p2: 0, samen: 0 };
+  for(const b of balances) byOwner[b.pot.owner] = (byOwner[b.pot.owner] || 0) + b.balance;
+
+  const bandEl = document.getElementById('vermogenSaldoBand');
+  bandEl.innerHTML = `
+    <div class="cell"><div class="k">Totaal vermogen</div><div class="v ${total>=0?'pos':'neg'}">${formatEUR(total)}</div></div>
+    <div class="cell"><div class="k">${state.people.p1}</div><div class="v ${byOwner.p1>=0?'pos':'neg'}">${formatEUR(byOwner.p1)}</div></div>
+    <div class="cell"><div class="k">${state.people.p2}</div><div class="v ${byOwner.p2>=0?'pos':'neg'}">${formatEUR(byOwner.p2)}</div></div>
+    <div class="cell"><div class="k">Samen</div><div class="v ${byOwner.samen>=0?'pos':'neg'}">${formatEUR(byOwner.samen)}</div></div>
+  `;
+
+  // Pot cards
+  const potListEl = document.getElementById('potList');
+  if(state.pots.length === 0){
+    potListEl.innerHTML = '<p class="empty-state">Nog geen spaarpotjes toegevoegd. Voeg er hieronder een toe.</p>';
+  } else {
+    potListEl.innerHTML = balances.map(({pot, balance}) => `
+      <div class="pot-card" data-id="${pot.id}">
+        <input type="text" class="pot-name-input" value="${escapeAttr(pot.name)}">
+        <div class="pot-balance ${balance>=0?'pos':'neg'}">${formatEUR(balance)}</div>
+        <div class="pot-card-row">
+          <label>Van</label>
+          <select class="select-input pot-owner-select"></select>
+        </div>
+        <div class="pot-card-row">
+          <label>Start</label>
+          <input type="number" step="0.01" class="text-input pot-start-input" value="${pot.startBalance || 0}">
+          <button class="remove-btn" title="Potje verwijderen">✕</button>
+        </div>
+      </div>
+    `).join('');
+
+    potListEl.querySelectorAll('.pot-card').forEach(card => {
+      const id = card.dataset.id;
+      const pot = potById(id);
+      const ownerSelect = card.querySelector('.pot-owner-select');
+      populateOwnerSelect(ownerSelect, pot.owner);
+
+      card.querySelector('.pot-name-input').addEventListener('change', (e) => {
+        const val = e.target.value.trim();
+        if(val){ pot.name = val; saveState(); refreshAll(); }
+      });
+      ownerSelect.addEventListener('change', (e) => {
+        pot.owner = e.target.value; saveState(); refreshAll();
+      });
+      card.querySelector('.pot-start-input').addEventListener('change', (e) => {
+        pot.startBalance = parseFloat(e.target.value) || 0; saveState(); refreshAll();
+      });
+      card.querySelector('.remove-btn').addEventListener('click', () => {
+        if(state.transactions.some(t => t.potId === id)){
+          alert('Dit potje is nog gekoppeld aan transacties en kan niet verwijderd worden. Koppel die transacties eerst aan een ander potje.');
+          return;
+        }
+        if(!confirm(`Potje "${pot.name}" verwijderen?`)) return;
+        state.pots = state.pots.filter(p => p.id !== id);
+        state.potRules = state.potRules.filter(r => r.potId !== id);
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  populateOwnerSelect(document.getElementById('newPotOwner'));
+
+  // Nog te koppelen
+  const unlinked = getSparenTransactions().filter(t => !t.potId).sort((a,b) => b.date.localeCompare(a.date));
+  const unlinkedEl = document.getElementById('potUnlinkedList');
+  const unlinkedEmpty = document.getElementById('potUnlinkedEmpty');
+  if(unlinked.length === 0){
+    unlinkedEl.innerHTML = '';
+    unlinkedEmpty.hidden = state.pots.length === 0; // don't nag before any pot exists
+  } else {
+    unlinkedEmpty.hidden = true;
+    const potOptions = state.pots.map(p => `<option value="${p.id}">${p.name} (${ownerLabel(p.owner)})</option>`).join('');
+    unlinkedEl.innerHTML = unlinked.map(t => `
+      <div class="categorize-item" data-id="${t.id}">
+        <div class="desc">
+          <div class="main">${escapeHtml(t.description)}</div>
+          <div class="meta">${t.date} · ${state.people[t.person]}${t.tegenrekening ? ' · ' + escapeHtml(t.tegenrekening) : ''}</div>
+        </div>
+        <div class="amount num pos">${formatEUR(-t.amount)}</div>
+        <select class="select-input pot-select">
+          <option value="">Kies potje…</option>
+          ${potOptions}
+        </select>
+        <label class="remember">
+          <input type="checkbox" class="remember-check" checked> onthoud dit
+        </label>
+        <button class="btn btn-solid btn-small save-pot">Opslaan</button>
+      </div>
+    `).join('');
+
+    unlinkedEl.querySelectorAll('.save-pot').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.categorize-item');
+        const id = item.dataset.id;
+        const potSelect = item.querySelector('.pot-select');
+        const remember = item.querySelector('.remember-check').checked;
+        const potId = potSelect.value;
+        if(!potId){ potSelect.focus(); return; }
+        const tx = state.transactions.find(t => t.id === id);
+        tx.potId = potId;
+        if(remember){
+          const ruleValue = (tx.tegenrekening || tx.description || '').trim().toLowerCase();
+          if(ruleValue && !state.potRules.some(r => r.keyword.toLowerCase() === ruleValue)){
+            state.potRules.push({ keyword: ruleValue, potId });
+          }
+        }
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  // Alle spaartransacties (altijd handmatig corrigeerbaar)
+  const allSparen = getSparenTransactions().sort((a,b) => b.date.localeCompare(a.date));
+  const tableEl = document.getElementById('tableVermogenTransacties');
+  if(allSparen.length === 0){
+    tableEl.innerHTML = `<tbody><tr><td class="empty-state">Nog geen transacties in de categorie "Sparen".</td></tr></tbody>`;
+  } else {
+    const potOptions = state.pots.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Potje</th></tr></thead><tbody>`;
+    for(const t of allSparen){
+      html += `<tr data-id="${t.id}">
+        <td>${t.date}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td><span class="person-tag">${state.people[t.person]}</span></td>
+        <td class="num pos">${formatEUR(-t.amount)}</td>
+        <td>
+          <select class="select-input pot-edit-select">
+            <option value="">&mdash; geen potje &mdash;</option>
+            ${potOptions}
+          </select>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody>';
+    tableEl.innerHTML = html;
+    tableEl.querySelectorAll('tr[data-id]').forEach(row => {
+      const sel = row.querySelector('.pot-edit-select');
+      const tx = allSparen.find(t => t.id === row.dataset.id);
+      if(!sel || !tx) return;
+      sel.value = tx.potId || '';
+      sel.addEventListener('change', (e) => {
+        tx.potId = e.target.value || null;
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  // Koppelregels beheren
+  const ruleTargetSelect = document.getElementById('newPotRuleTarget');
+  ruleTargetSelect.innerHTML = state.pots.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+  const ruleListEl = document.getElementById('potRuleManageList');
+  ruleListEl.innerHTML = state.potRules.map((r, i) => `
+    <div class="rule-manage-row" data-i="${i}">
+      <span class="kw">${escapeHtml(r.keyword)}</span>
+      <span class="cat">→ ${(potById(r.potId)||{name:'?'}).name}</span>
+      <button class="remove-btn" title="Verwijderen">✕</button>
+    </div>
+  `).join('');
+  ruleListEl.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.closest('.rule-manage-row').dataset.i, 10);
+      state.potRules.splice(i, 1);
+      saveState(); refreshAll();
+    });
+  });
 }
 
 /* ===================== Tab: Totaal ===================== */
@@ -806,6 +1094,7 @@ function refreshAll(){
     ['categoriseren', renderCategorizeTab],
     ['maand', renderMaandTab],
     ['jaar', renderJaarTab],
+    ['vermogen', renderVermogenTab],
     ['totaal', renderTotaalTab],
     ['instellingen', renderInstellingenTab],
   ];
@@ -824,6 +1113,7 @@ const TAB_RENDERERS = {
   categoriseren: renderCategorizeTab,
   maand: renderMaandTab,
   jaar: renderJaarTab,
+  vermogen: renderVermogenTab,
   totaal: renderTotaalTab,
   instellingen: renderInstellingenTab,
 };
@@ -865,6 +1155,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('maandSelect').addEventListener('change', renderMaandTab);
   document.getElementById('jaarSelect').addEventListener('change', renderJaarTab);
+  document.getElementById('maandCategorieFilter').addEventListener('change', renderMaandTab);
 
   document.getElementById('btnReapplyRules').addEventListener('click', () => {
     if(!confirm('Dit controleert alle uitgaven opnieuw tegen je huidige herkenningsregels en kan al toegekende categorieën overschrijven als een regel ze anders indeelt. Doorgaan?')) return;
@@ -872,6 +1163,42 @@ document.addEventListener('DOMContentLoaded', () => {
     saveState();
     refreshAll();
     alert(changed > 0 ? `${changed} transactie(s) opnieuw ingedeeld.` : 'Geen wijzigingen: alle transacties komen al overeen met je huidige regels.');
+  });
+
+  document.getElementById('btnAddPot').addEventListener('click', () => {
+    const nameInput = document.getElementById('newPotName');
+    const ownerSelect = document.getElementById('newPotOwner');
+    const startInput = document.getElementById('newPotStart');
+    const name = nameInput.value.trim();
+    if(!name) return;
+    state.pots.push({
+      id: uid('pot'),
+      name,
+      owner: ownerSelect.value || 'samen',
+      startBalance: parseFloat(startInput.value) || 0,
+    });
+    nameInput.value = '';
+    startInput.value = '0';
+    saveState(); refreshAll();
+  });
+
+  document.getElementById('btnReapplyPotRules').addEventListener('click', () => {
+    if(state.pots.length === 0){ alert('Voeg eerst een spaarpotje toe.'); return; }
+    if(!confirm('Dit controleert alle "Sparen"-transacties opnieuw tegen je huidige koppelregels en kan al gekoppelde potjes overschrijven. Doorgaan?')) return;
+    const changed = reapplyPotRules();
+    saveState();
+    refreshAll();
+    alert(changed > 0 ? `${changed} transactie(s) opnieuw gekoppeld.` : 'Geen wijzigingen: alle transacties komen al overeen met je huidige regels.');
+  });
+
+  document.getElementById('btnAddPotRule').addEventListener('click', () => {
+    const kwInput = document.getElementById('newPotRuleKeyword');
+    const targetSelect = document.getElementById('newPotRuleTarget');
+    const keyword = kwInput.value.trim().toLowerCase();
+    if(!keyword || !targetSelect.value) return;
+    state.potRules.unshift({ keyword, potId: targetSelect.value });
+    kwInput.value = '';
+    saveState(); refreshAll();
   });
 
   document.getElementById('nameInputP1').addEventListener('input', (e) => {
