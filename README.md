@@ -53,6 +53,16 @@ In het Maand- en Jaaroverzicht zie je een balkje dat uitgaven opsplitst in vaste
 
 Het tabblad **Abonnementen** speurt automatisch naar terugkerende uitgaven: dezelfde omschrijving met een vergelijkbaar bedrag in minstens twee verschillende maanden. Handig om vergeten abonnementen te ontdekken. Dit is een schatting op basis van je transacties, geen aparte administratie — mist de site iets, dan verandert dat vanzelf zodra er meer maanden aan data zijn. Onterecht gevonden abonnementen kun je met het kruisje verbergen.
 
+## Voorgeschoten uitgaven verrekenen
+
+Betaal je weleens iets voor jullie samen (of voor iemand anders) en krijg je een deel terug, bijvoorbeeld een etentje dat je voorschiet en via Tikkie verrekend wordt? Categoriseer de ontvangen betaling dan gewoon in **dezelfde categorie** als de oorspronkelijke uitgave (bv. "Uit eten"). De site trekt ontvangen bedragen in een categorie automatisch af van de uitgaven in diezelfde categorie, per persoon — in plaats van dat het als los inkomen wordt geteld. Zo blijft "Uit eten" een eerlijk beeld van wat het je écht kostte.
+
+Let op: alleen bedragen die je indeelt bij een gewone uitgavecategorie werken zo. Categoriseer je een binnenkomend bedrag als "Inkomen" (of laat je het ongecategoriseerd), dan telt het gewoon als inkomen, zoals voorheen.
+
+## Persoonlijke weergave
+
+Boven het Maand- en Jaaroverzicht zitten knoppen om te wisselen tussen **Gezamenlijk**, en de weergave voor ieder van jullie afzonderlijk. Zo zie je in één klik alleen jouw eigen inkomsten, uitgaven en categorieën, of die van je partner.
+
 ## Vermogensopbouw
 
 Onder het tabblad **Vermogensopbouw** houd je spaarpotjes bij (bijvoorbeeld "Vakantie" of "Noodfonds"), inclusief van wie elk potje is en wat het startsaldo was. Potjes voeg je zelf handmatig toe.
