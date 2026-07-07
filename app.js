@@ -3,21 +3,23 @@
 const STORAGE_KEY = 'huishoudboekje_v1';
 
 const DEFAULT_CATEGORIES = [
-  { id: 'woning',       name: 'Woning',                    color: '#3C5A47', isTransfer: false },
-  { id: 'boodschappen', name: 'Boodschappen',               color: '#AD7E24', isTransfer: false },
-  { id: 'verzekeringen',name: 'Verzekeringen',              color: '#4B6584', isTransfer: false },
-  { id: 'kleding',      name: 'Kleding',                    color: '#C98A96', isTransfer: false },
-  { id: 'hobby',        name: 'Hobby',                      color: '#4E8B8B', isTransfer: false },
-  { id: 'uiteten',      name: 'Uit eten',                   color: '#AE5138', isTransfer: false },
-  { id: 'vervoer',      name: 'Vervoer',                    color: '#7C8B4A', isTransfer: false },
-  { id: 'abonnementen', name: 'Abonnementen',               color: '#7E6A8F', isTransfer: false },
-  { id: 'zorg',         name: 'Zorg',                       color: '#6E9BB5', isTransfer: false },
-  { id: 'verzorging',   name: 'Persoonlijke verzorging',    color: '#D89A7A', isTransfer: false },
-  { id: 'inkomen',      name: 'Inkomen',                    color: '#2A4534', isTransfer: false },
-  { id: 'sparen',       name: 'Sparen (naar spaarrekening)',color: '#C9A227', isTransfer: true  },
-  { id: 'onderling',    name: 'Onderlinge overboeking',     color: '#B5AC94', isTransfer: true  },
-  { id: 'overig',       name: 'Overig',                     color: '#96A0A6', isTransfer: false },
+  { id: 'woning',       name: 'Woning',                    color: '#3C5A47', isTransfer: false, isFixed: true  },
+  { id: 'boodschappen', name: 'Boodschappen',               color: '#AD7E24', isTransfer: false, isFixed: false },
+  { id: 'verzekeringen',name: 'Verzekeringen',              color: '#4B6584', isTransfer: false, isFixed: true  },
+  { id: 'kleding',      name: 'Kleding',                    color: '#C98A96', isTransfer: false, isFixed: false },
+  { id: 'hobby',        name: 'Hobby',                      color: '#4E8B8B', isTransfer: false, isFixed: false },
+  { id: 'uiteten',      name: 'Uit eten',                   color: '#AE5138', isTransfer: false, isFixed: false },
+  { id: 'vervoer',      name: 'Vervoer',                    color: '#7C8B4A', isTransfer: false, isFixed: false },
+  { id: 'abonnementen', name: 'Abonnementen',               color: '#7E6A8F', isTransfer: false, isFixed: true  },
+  { id: 'zorg',         name: 'Zorg',                       color: '#6E9BB5', isTransfer: false, isFixed: false },
+  { id: 'verzorging',   name: 'Persoonlijke verzorging',    color: '#D89A7A', isTransfer: false, isFixed: false },
+  { id: 'inkomen',      name: 'Inkomen',                    color: '#2A4534', isTransfer: false, isFixed: false },
+  { id: 'sparen',       name: 'Sparen (naar spaarrekening)',color: '#C9A227', isTransfer: true,  isFixed: false },
+  { id: 'aflossing',    name: 'Aflossing schuld',           color: '#8A6E5C', isTransfer: true,  isFixed: false },
+  { id: 'onderling',    name: 'Onderlinge overboeking',     color: '#B5AC94', isTransfer: true,  isFixed: false },
+  { id: 'overig',       name: 'Overig',                     color: '#96A0A6', isTransfer: false, isFixed: false },
 ];
+
 
 const DEFAULT_RULES = [
   { keyword: 'albert heijn', category: 'boodschappen' },
@@ -49,6 +51,7 @@ const DEFAULT_RULES = [
   { keyword: 'uber   eats', category: 'uiteten' },
   { keyword: 'salaris', category: 'inkomen' },
   { keyword: 'loon', category: 'inkomen' },
+  { keyword: 'duo', category: 'aflossing' },
 ];
 
 let state = loadState();
@@ -58,9 +61,12 @@ function defaultState(){
     people: { p1: 'Persoon 1', p2: 'Persoon 2' },
     categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
     rules: JSON.parse(JSON.stringify(DEFAULT_RULES)),
-    transactions: [], // {id, date, person, description, tegenrekening, amount, category, potId}
+    transactions: [], // {id, date, person, description, tegenrekening, amount, category, potId, debtId}
     pots: [], // {id, name, owner: 'p1'|'p2'|'samen', startBalance, color}
     potRules: [], // {keyword, potId} matched against tegenrekening + omschrijving
+    debts: [], // {id, name, owner, type:'lening'|'hypotheek', referenceDate, referenceBalance, interestRate, monthlyPayment, wozValue}
+    debtRules: [], // {keyword, debtId}
+    dismissedSubscriptions: [], // normalized description keys the user hid from the abonnementen-detector
   };
 }
 
@@ -74,6 +80,14 @@ function loadState(){
     if(!parsed.rules) parsed.rules = JSON.parse(JSON.stringify(DEFAULT_RULES));
     if(!parsed.pots) parsed.pots = [];
     if(!parsed.potRules) parsed.potRules = [];
+    if(!parsed.debts) parsed.debts = [];
+    if(!parsed.debtRules) parsed.debtRules = [];
+    if(!parsed.dismissedSubscriptions) parsed.dismissedSubscriptions = [];
+    // categories saved before the 'Aflossing schuld' category / isFixed flag existed
+    if(!parsed.categories.some(c => c.id === 'aflossing')){
+      parsed.categories.push({ id: 'aflossing', name: 'Aflossing schuld', color: '#8A6E5C', isTransfer: true, isFixed: false });
+    }
+    for(const c of parsed.categories){ if(typeof c.isFixed !== 'boolean') c.isFixed = false; }
     return parsed;
   }catch(e){
     console.error('Kon opgeslagen data niet lezen, begin opnieuw.', e);
@@ -194,6 +208,7 @@ function reapplyRules(){
       changed++;
     }
     maybeAutoAssignPot(t);
+    maybeAutoAssignDebt(t);
   }
   return changed;
 }
@@ -244,6 +259,64 @@ function computePotBalance(potId){
   let balance = pot.startBalance || 0;
   for(const t of state.transactions){
     if(t.potId === potId) balance += -t.amount; // money leaving checking = deposit into pot
+  }
+  return balance;
+}
+
+/* ----- Schulden (leningen, hypotheek) ----- */
+
+function debtById(id){
+  return state.debts.find(d => d.id === id);
+}
+
+function findDebtForTransaction(t){
+  const haystack = [t.tegenrekening || '', t.description || '', t.details || ''].join(' ').toLowerCase();
+  for(const rule of state.debtRules){
+    if(rule.keyword && haystack.includes(rule.keyword.toLowerCase())){
+      return rule.debtId;
+    }
+  }
+  return null;
+}
+
+function maybeAutoAssignDebt(t){
+  if(t.category === 'aflossing' && !t.debtId){
+    const matched = findDebtForTransaction(t);
+    if(matched) t.debtId = matched;
+  }
+}
+
+function reapplyDebtRules(){
+  let changed = 0;
+  for(const t of state.transactions){
+    if(t.category !== 'aflossing') continue;
+    const matched = findDebtForTransaction(t);
+    if(matched && matched !== t.debtId){
+      t.debtId = matched;
+      changed++;
+    }
+  }
+  return changed;
+}
+
+function getAflossingTransactions(){
+  return state.transactions.filter(t => t.category === 'aflossing');
+}
+
+/**
+ * Openstaand saldo = het handmatig ingevoerde referentiesaldo op de
+ * referentiedatum, plus/min alle gekoppelde aflossingen ÉN latere transacties.
+ * Transacties vóór de referentiedatum tellen niet mee, zodat je het saldo
+ * altijd kunt "resetten" aan de hand van een officieel jaaroverzicht zonder
+ * dubbeltellingen.
+ */
+function computeDebtBalance(debtId){
+  const debt = debtById(debtId);
+  if(!debt) return 0;
+  let balance = debt.referenceBalance || 0;
+  const refDate = debt.referenceDate || '0000-00-00';
+  for(const t of state.transactions){
+    if(t.debtId === debtId && t.date > refDate) balance += t.amount;
   }
   return balance;
 }
@@ -311,8 +384,10 @@ function parseINGFile(text, personKey){
       amount,
       category,
       potId: null,
+      debtId: null,
     };
     maybeAutoAssignPot(newTx);
+    maybeAutoAssignDebt(newTx);
     state.transactions.push(newTx);
     existingIds.add(id);
     added++;
@@ -334,6 +409,7 @@ function aggregate(transactions){
   const expenseByPerson = { p1: 0, p2: 0 };
   const categoryTotals = {}; // catId -> total expense (abs)
   const categoryByPerson = {}; // catId -> {p1,p2}
+  let fixedExpense = 0, variableExpense = 0;
 
   for(const t of transactions){
     const cat = t.category ? categoryById(t.category) : null;
@@ -348,6 +424,7 @@ function aggregate(transactions){
       categoryTotals[catId] = (categoryTotals[catId] || 0) + abs;
       if(!categoryByPerson[catId]) categoryByPerson[catId] = { p1: 0, p2: 0 };
       categoryByPerson[catId][t.person] = (categoryByPerson[catId][t.person] || 0) + abs;
+      if(cat && cat.isFixed) fixedExpense += abs; else variableExpense += abs;
     }
   }
   const totalIncome = incomeByPerson.p1 + incomeByPerson.p2;
@@ -355,10 +432,33 @@ function aggregate(transactions){
   return {
     incomeByPerson, expenseByPerson, categoryTotals, categoryByPerson,
     totalIncome, totalExpense, net: totalIncome - totalExpense,
+    fixedExpense, variableExpense,
   };
 }
 
 /* ===================== Rendering: shared ===================== */
+
+function renderFixedVariableBar(mountId, agg){
+  const el = document.getElementById(mountId);
+  if(!el) return;
+  const total = agg.fixedExpense + agg.variableExpense;
+  if(total <= 0){
+    el.innerHTML = '<p class="empty-state">Nog geen uitgaven in deze periode.</p>';
+    return;
+  }
+  const fixedPct = Math.round((agg.fixedExpense / total) * 100);
+  const varPct = 100 - fixedPct;
+  el.innerHTML = `
+    <div class="fixed-var-bar">
+      <div class="fixed-var-seg fixed" style="width:${fixedPct}%"></div>
+      <div class="fixed-var-seg variable" style="width:${varPct}%"></div>
+    </div>
+    <div class="fixed-var-legend">
+      <span><span class="cat-dot" style="background:#3C5A47"></span>Vaste lasten &mdash; ${formatEUR(agg.fixedExpense)} (${fixedPct}%)</span>
+      <span><span class="cat-dot" style="background:#C9A227"></span>Variabele uitgaven &mdash; ${formatEUR(agg.variableExpense)} (${varPct}%)</span>
+    </div>
+  `;
+}
 
 function escapeAttr(str){
   return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
@@ -629,6 +729,7 @@ function renderCategorizeTab(){
       const tx = state.transactions.find(t => t.id === id);
       tx.category = catId;
       maybeAutoAssignPot(tx);
+      maybeAutoAssignDebt(tx);
       if(remember){
         const keyword = tx.description.trim().toLowerCase().slice(0, 40);
         if(keyword && !state.rules.some(r => r.keyword.toLowerCase() === keyword)){
@@ -663,6 +764,7 @@ function renderMaandTab(){
   const agg = aggregate(txs);
 
   renderSaldoBand(document.getElementById('maandSaldoBand'), agg);
+  renderFixedVariableBar('fixedVarMaand', agg);
   renderPersonBars('chartMaandPersonen', agg);
   renderCategoryDonut('chartMaandCategorie', agg);
   renderCategoryTable(document.getElementById('tableMaandCategorie'), agg);
@@ -737,6 +839,7 @@ function renderMaandTab(){
     select.addEventListener('change', (e) => {
       tx.category = e.target.value || null;
       maybeAutoAssignPot(tx);
+      maybeAutoAssignDebt(tx);
       saveState();
       refreshAll();
     });
@@ -759,6 +862,7 @@ function renderJaarTab(){
   const agg = aggregate(txs);
 
   renderSaldoBand(document.getElementById('jaarSaldoBand'), agg, 'Gespaard dit jaar');
+  renderFixedVariableBar('fixedVarJaar', agg);
   renderCategoryDonut('chartJaarCategorie', agg);
   renderPersonBars('chartJaarPersonen', agg);
   renderCategoryTable(document.getElementById('tableJaarCategorie'), agg);
@@ -974,6 +1078,322 @@ function renderVermogenTab(){
   });
 }
 
+/* ===================== Tab: Schulden ===================== */
+
+function renderSchuldenTab(){
+  const balances = state.debts.map(d => ({ debt: d, balance: computeDebtBalance(d.id) }));
+  const total = balances.reduce((s, b) => s + b.balance, 0);
+  const byOwner = { p1: 0, p2: 0, samen: 0 };
+  for(const b of balances) byOwner[b.debt.owner] = (byOwner[b.debt.owner] || 0) + b.balance;
+
+  const bandEl = document.getElementById('schuldenSaldoBand');
+  bandEl.innerHTML = `
+    <div class="cell"><div class="k">Totaal openstaand</div><div class="v neg">${formatEUR(total)}</div></div>
+    <div class="cell"><div class="k">${state.people.p1}</div><div class="v neg">${formatEUR(byOwner.p1)}</div></div>
+    <div class="cell"><div class="k">${state.people.p2}</div><div class="v neg">${formatEUR(byOwner.p2)}</div></div>
+    <div class="cell"><div class="k">Samen</div><div class="v neg">${formatEUR(byOwner.samen)}</div></div>
+  `;
+
+  const listEl = document.getElementById('debtList');
+  if(state.debts.length === 0){
+    listEl.innerHTML = '<p class="empty-state">Nog geen schulden toegevoegd. Voeg er hieronder een toe.</p>';
+  } else {
+    listEl.innerHTML = balances.map(({debt, balance}) => {
+      const overwaarde = debt.type === 'hypotheek' && debt.wozValue ? (debt.wozValue - balance) : null;
+      return `
+      <div class="pot-card" data-id="${debt.id}">
+        <input type="text" class="pot-name-input" value="${escapeAttr(debt.name)}">
+        <div class="pot-balance neg">${formatEUR(balance)} <span style="font-size:11px;font-weight:400;color:var(--ink-faint);">openstaand</span></div>
+        <div class="pot-card-row">
+          <label>Type</label>
+          <select class="select-input debt-type-select">
+            <option value="lening" ${debt.type==='lening'?'selected':''}>Lening</option>
+            <option value="hypotheek" ${debt.type==='hypotheek'?'selected':''}>Hypotheek</option>
+          </select>
+        </div>
+        <div class="pot-card-row">
+          <label>Van</label>
+          <select class="select-input debt-owner-select"></select>
+        </div>
+        <div class="pot-card-row">
+          <label>Peildatum</label>
+          <input type="date" class="text-input debt-refdate-input" value="${debt.referenceDate || ''}">
+        </div>
+        <div class="pot-card-row">
+          <label>Saldo</label>
+          <input type="number" step="0.01" class="text-input debt-refbalance-input" value="${debt.referenceBalance || 0}">
+        </div>
+        <div class="pot-card-row">
+          <label>Rente %</label>
+          <input type="number" step="0.01" class="text-input debt-interest-input" value="${debt.interestRate ?? ''}" placeholder="optioneel">
+        </div>
+        <div class="pot-card-row">
+          <label>Maandlast</label>
+          <input type="number" step="0.01" class="text-input debt-monthly-input" value="${debt.monthlyPayment ?? ''}" placeholder="optioneel">
+        </div>
+        ${debt.type === 'hypotheek' ? `
+        <div class="pot-card-row">
+          <label>WOZ-waarde</label>
+          <input type="number" step="0.01" class="text-input debt-woz-input" value="${debt.wozValue ?? ''}" placeholder="optioneel">
+        </div>
+        ${overwaarde !== null ? `<div class="pot-card-row" style="font-size:12px;color:var(--ink-soft);">Overwaarde: <strong style="margin-left:4px;color:${overwaarde>=0?'var(--forest)':'var(--brick)'}">${formatEUR(overwaarde)}</strong></div>` : ''}
+        ` : ''}
+        <div class="pot-card-row">
+          <button class="remove-btn" title="Verwijderen" style="margin-left:auto;">✕ Verwijderen</button>
+        </div>
+      </div>
+    `;}).join('');
+
+    listEl.querySelectorAll('.pot-card').forEach(card => {
+      const id = card.dataset.id;
+      const debt = debtById(id);
+      const ownerSelect = card.querySelector('.debt-owner-select');
+      populateOwnerSelect(ownerSelect, debt.owner);
+
+      card.querySelector('.pot-name-input').addEventListener('change', (e) => {
+        const val = e.target.value.trim();
+        if(val){ debt.name = val; saveState(); refreshAll(); }
+      });
+      card.querySelector('.debt-type-select').addEventListener('change', (e) => {
+        debt.type = e.target.value; saveState(); refreshAll();
+      });
+      ownerSelect.addEventListener('change', (e) => {
+        debt.owner = e.target.value; saveState(); refreshAll();
+      });
+      card.querySelector('.debt-refdate-input').addEventListener('change', (e) => {
+        debt.referenceDate = e.target.value || ''; saveState(); refreshAll();
+      });
+      card.querySelector('.debt-refbalance-input').addEventListener('change', (e) => {
+        debt.referenceBalance = parseFloat(e.target.value) || 0; saveState(); refreshAll();
+      });
+      card.querySelector('.debt-interest-input').addEventListener('change', (e) => {
+        debt.interestRate = e.target.value === '' ? null : parseFloat(e.target.value); saveState(); refreshAll();
+      });
+      card.querySelector('.debt-monthly-input').addEventListener('change', (e) => {
+        debt.monthlyPayment = e.target.value === '' ? null : parseFloat(e.target.value); saveState(); refreshAll();
+      });
+      const wozInput = card.querySelector('.debt-woz-input');
+      if(wozInput){
+        wozInput.addEventListener('change', (e) => {
+          debt.wozValue = e.target.value === '' ? null : parseFloat(e.target.value); saveState(); refreshAll();
+        });
+      }
+      card.querySelector('.remove-btn').addEventListener('click', () => {
+        if(state.transactions.some(t => t.debtId === id)){
+          alert('Deze schuld is nog gekoppeld aan transacties en kan niet verwijderd worden. Koppel die transacties eerst aan een andere schuld.');
+          return;
+        }
+        if(!confirm(`"${debt.name}" verwijderen?`)) return;
+        state.debts = state.debts.filter(d => d.id !== id);
+        state.debtRules = state.debtRules.filter(r => r.debtId !== id);
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  populateOwnerSelect(document.getElementById('newDebtOwner'));
+
+  // Nog te koppelen
+  const unlinked = getAflossingTransactions().filter(t => !t.debtId).sort((a,b) => b.date.localeCompare(a.date));
+  const unlinkedEl = document.getElementById('debtUnlinkedList');
+  const unlinkedEmpty = document.getElementById('debtUnlinkedEmpty');
+  if(unlinked.length === 0){
+    unlinkedEl.innerHTML = '';
+    unlinkedEmpty.hidden = state.debts.length === 0;
+  } else {
+    unlinkedEmpty.hidden = true;
+    const debtOptions = state.debts.map(d => `<option value="${d.id}">${d.name} (${ownerLabel(d.owner)})</option>`).join('');
+    unlinkedEl.innerHTML = unlinked.map(t => `
+      <div class="categorize-item" data-id="${t.id}">
+        <div class="desc">
+          <div class="main">${escapeHtml(t.description)}</div>
+          <div class="meta">${t.date} · ${state.people[t.person]}${t.tegenrekening ? ' · ' + escapeHtml(t.tegenrekening) : ''}</div>
+        </div>
+        <div class="amount num neg">${formatEUR(t.amount)}</div>
+        <select class="select-input debt-select">
+          <option value="">Kies schuld…</option>
+          ${debtOptions}
+        </select>
+        <label class="remember">
+          <input type="checkbox" class="remember-check" checked> onthoud dit
+        </label>
+        <button class="btn btn-solid btn-small save-debt">Opslaan</button>
+      </div>
+    `).join('');
+
+    unlinkedEl.querySelectorAll('.save-debt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.categorize-item');
+        const id = item.dataset.id;
+        const debtSelect = item.querySelector('.debt-select');
+        const remember = item.querySelector('.remember-check').checked;
+        const debtId = debtSelect.value;
+        if(!debtId){ debtSelect.focus(); return; }
+        const tx = state.transactions.find(t => t.id === id);
+        tx.debtId = debtId;
+        if(remember){
+          const ruleValue = (tx.tegenrekening || tx.description || '').trim().toLowerCase();
+          if(ruleValue && !state.debtRules.some(r => r.keyword.toLowerCase() === ruleValue)){
+            state.debtRules.push({ keyword: ruleValue, debtId });
+          }
+        }
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  // Alle aflossingen (altijd handmatig corrigeerbaar)
+  const allAflossingen = getAflossingTransactions().sort((a,b) => b.date.localeCompare(a.date));
+  const tableEl = document.getElementById('tableSchuldenTransacties');
+  if(allAflossingen.length === 0){
+    tableEl.innerHTML = `<tbody><tr><td class="empty-state">Nog geen transacties in de categorie "Aflossing schuld".</td></tr></tbody>`;
+  } else {
+    const debtOptions = state.debts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Schuld</th></tr></thead><tbody>`;
+    for(const t of allAflossingen){
+      html += `<tr data-id="${t.id}">
+        <td>${t.date}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td><span class="person-tag">${state.people[t.person]}</span></td>
+        <td class="num neg">${formatEUR(t.amount)}</td>
+        <td>
+          <select class="select-input debt-edit-select">
+            <option value="">&mdash; geen schuld &mdash;</option>
+            ${debtOptions}
+          </select>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody>';
+    tableEl.innerHTML = html;
+    tableEl.querySelectorAll('tr[data-id]').forEach(row => {
+      const sel = row.querySelector('.debt-edit-select');
+      const tx = allAflossingen.find(t => t.id === row.dataset.id);
+      if(!sel || !tx) return;
+      sel.value = tx.debtId || '';
+      sel.addEventListener('change', (e) => {
+        tx.debtId = e.target.value || null;
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  // Koppelregels beheren
+  const ruleTargetSelect = document.getElementById('newDebtRuleTarget');
+  ruleTargetSelect.innerHTML = state.debts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+
+  const ruleListEl = document.getElementById('debtRuleManageList');
+  ruleListEl.innerHTML = state.debtRules.map((r, i) => `
+    <div class="rule-manage-row" data-i="${i}">
+      <span class="kw">${escapeHtml(r.keyword)}</span>
+      <span class="cat">→ ${(debtById(r.debtId)||{name:'?'}).name}</span>
+      <button class="remove-btn" title="Verwijderen">✕</button>
+    </div>
+  `).join('');
+  ruleListEl.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.closest('.rule-manage-row').dataset.i, 10);
+      state.debtRules.splice(i, 1);
+      saveState(); refreshAll();
+    });
+  });
+}
+
+/* ===================== Tab: Abonnementen ===================== */
+
+function normalizeSubscriptionKey(description){
+  return description
+    .toLowerCase()
+    .replace(/\d{3,}/g, '')   // strip reference/order numbers
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectSubscriptions(){
+  const groups = {};
+  for(const t of state.transactions){
+    if(t.amount >= 0) continue;
+    const cat = t.category ? categoryById(t.category) : null;
+    if(cat && cat.isTransfer) continue; // sparen/aflossing/onderling zijn geen "abonnement"
+    const key = normalizeSubscriptionKey(t.description);
+    if(!key) continue;
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(t);
+  }
+
+  const results = [];
+  for(const key in groups){
+    if(state.dismissedSubscriptions.includes(key)) continue;
+    const txs = groups[key];
+    const months = new Set(txs.map(t => monthKey(t.date)));
+    if(months.size < 2) continue; // minstens 2 verschillende maanden gezien
+    const amounts = txs.map(t => Math.abs(t.amount));
+    const avg = amounts.reduce((s,a) => s+a, 0) / amounts.length;
+    const maxDiff = Math.max(...amounts) - Math.min(...amounts);
+    // bedrag moet redelijk stabiel zijn: binnen €1,50 of 12% van het gemiddelde
+    if(maxDiff > Math.max(1.5, avg * 0.12)) continue;
+    const sorted = [...txs].sort((a,b) => b.date.localeCompare(a.date));
+    results.push({
+      key,
+      name: sorted[0].description,
+      avgAmount: avg,
+      timesSeen: months.size,
+      lastSeen: sorted[0].date,
+      category: sorted[0].category,
+      person: sorted[0].person,
+    });
+  }
+  return results.sort((a,b) => b.avgAmount - a.avgAmount);
+}
+
+function renderAbonnementenTab(){
+  const subs = detectSubscriptions();
+  const tableEl = document.getElementById('tableAbonnementen');
+  const emptyEl = document.getElementById('abonnementenEmpty');
+  const bandEl = document.getElementById('abonnementenSaldoBand');
+
+  const totalPerMonth = subs.reduce((s, sub) => s + sub.avgAmount, 0);
+  bandEl.innerHTML = `
+    <div class="cell"><div class="k">Aantal gevonden</div><div class="v">${subs.length}</div></div>
+    <div class="cell"><div class="k">Geschat per maand</div><div class="v neg">${formatEUR(totalPerMonth)}</div></div>
+    <div class="cell"><div class="k">Geschat per jaar</div><div class="v neg">${formatEUR(totalPerMonth * 12)}</div></div>
+  `;
+
+  if(subs.length === 0){
+    tableEl.innerHTML = '';
+    emptyEl.hidden = false;
+    return;
+  }
+  emptyEl.hidden = true;
+
+  let html = `<thead><tr><th>Omschrijving</th><th>Wie</th><th>Categorie</th><th class="num">Gem. bedrag/maand</th><th>Keer gezien</th><th>Laatst gezien</th><th></th></tr></thead><tbody>`;
+  for(const sub of subs){
+    const cat = sub.category ? categoryById(sub.category) : null;
+    html += `<tr data-key="${escapeAttr(sub.key)}">
+      <td>${escapeHtml(sub.name)}</td>
+      <td><span class="person-tag">${state.people[sub.person]}</span></td>
+      <td>${cat ? `<span class="cat-dot" style="background:${cat.color}"></span>${cat.name}` : '<em>onbekend</em>'}</td>
+      <td class="num neg">${formatEUR(sub.avgAmount)}</td>
+      <td>${sub.timesSeen}×</td>
+      <td>${sub.lastSeen}</td>
+      <td><button class="remove-btn dismiss-sub" title="Verbergen">✕</button></td>
+    </tr>`;
+  }
+  html += '</tbody>';
+  tableEl.innerHTML = html;
+
+  tableEl.querySelectorAll('.dismiss-sub').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.closest('tr').dataset.key;
+      if(!state.dismissedSubscriptions.includes(key)){
+        state.dismissedSubscriptions.push(key);
+      }
+      saveState(); refreshAll();
+    });
+  });
+}
+
 /* ===================== Tab: Totaal ===================== */
 
 function renderTotaalTab(){
@@ -1017,6 +1437,9 @@ function renderInstellingenTab(){
       <input type="color" value="${c.color}" class="cat-color">
       <input type="text" value="${escapeHtml(c.name)}" class="text-input name-input">
       <label style="font-size:11.5px;color:var(--ink-soft);display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" class="cat-fixed" ${c.isFixed ? 'checked' : ''}> vaste last
+      </label>
+      <label style="font-size:11.5px;color:var(--ink-soft);display:flex;align-items:center;gap:4px;">
         <input type="checkbox" class="cat-transfer" ${c.isTransfer ? 'checked' : ''}> telt niet mee in saldo
       </label>
       <button class="remove-btn" title="Verwijderen">✕</button>
@@ -1033,6 +1456,10 @@ function renderInstellingenTab(){
       const cat = categoryById(id);
       const newName = e.target.value.trim();
       if(cat && newName){ cat.name = newName; saveState(); refreshAll(); }
+    });
+    row.querySelector('.cat-fixed').addEventListener('change', (e) => {
+      const cat = categoryById(id);
+      if(cat){ cat.isFixed = e.target.checked; saveState(); refreshAll(); }
     });
     row.querySelector('.cat-transfer').addEventListener('change', (e) => {
       const cat = categoryById(id);
@@ -1095,6 +1522,8 @@ function refreshAll(){
     ['maand', renderMaandTab],
     ['jaar', renderJaarTab],
     ['vermogen', renderVermogenTab],
+    ['schulden', renderSchuldenTab],
+    ['abonnementen', renderAbonnementenTab],
     ['totaal', renderTotaalTab],
     ['instellingen', renderInstellingenTab],
   ];
@@ -1114,6 +1543,8 @@ const TAB_RENDERERS = {
   maand: renderMaandTab,
   jaar: renderJaarTab,
   vermogen: renderVermogenTab,
+  schulden: renderSchuldenTab,
+  abonnementen: renderAbonnementenTab,
   totaal: renderTotaalTab,
   instellingen: renderInstellingenTab,
 };
@@ -1201,6 +1632,56 @@ document.addEventListener('DOMContentLoaded', () => {
     saveState(); refreshAll();
   });
 
+  document.getElementById('btnAddDebt').addEventListener('click', () => {
+    const nameInput = document.getElementById('newDebtName');
+    const typeSelect = document.getElementById('newDebtType');
+    const ownerSelect = document.getElementById('newDebtOwner');
+    const refDateInput = document.getElementById('newDebtRefDate');
+    const refBalanceInput = document.getElementById('newDebtRefBalance');
+    const interestInput = document.getElementById('newDebtInterest');
+    const monthlyInput = document.getElementById('newDebtMonthly');
+    const wozInput = document.getElementById('newDebtWoz');
+    const name = nameInput.value.trim();
+    if(!name) return;
+    state.debts.push({
+      id: uid('debt'),
+      name,
+      type: typeSelect.value || 'lening',
+      owner: ownerSelect.value || 'samen',
+      referenceDate: refDateInput.value || '',
+      referenceBalance: parseFloat(refBalanceInput.value) || 0,
+      interestRate: interestInput.value === '' ? null : parseFloat(interestInput.value),
+      monthlyPayment: monthlyInput.value === '' ? null : parseFloat(monthlyInput.value),
+      wozValue: wozInput.value === '' ? null : parseFloat(wozInput.value),
+    });
+    nameInput.value = '';
+    refDateInput.value = '';
+    refBalanceInput.value = '';
+    interestInput.value = '';
+    monthlyInput.value = '';
+    wozInput.value = '';
+    saveState(); refreshAll();
+  });
+
+  document.getElementById('btnReapplyDebtRules').addEventListener('click', () => {
+    if(state.debts.length === 0){ alert('Voeg eerst een schuld toe.'); return; }
+    if(!confirm('Dit controleert alle "Aflossing schuld"-transacties opnieuw tegen je huidige koppelregels en kan al gekoppelde schulden overschrijven. Doorgaan?')) return;
+    const changed = reapplyDebtRules();
+    saveState();
+    refreshAll();
+    alert(changed > 0 ? `${changed} transactie(s) opnieuw gekoppeld.` : 'Geen wijzigingen: alle transacties komen al overeen met je huidige regels.');
+  });
+
+  document.getElementById('btnAddDebtRule').addEventListener('click', () => {
+    const kwInput = document.getElementById('newDebtRuleKeyword');
+    const targetSelect = document.getElementById('newDebtRuleTarget');
+    const keyword = kwInput.value.trim().toLowerCase();
+    if(!keyword || !targetSelect.value) return;
+    state.debtRules.unshift({ keyword, debtId: targetSelect.value });
+    kwInput.value = '';
+    saveState(); refreshAll();
+  });
+
   document.getElementById('nameInputP1').addEventListener('input', (e) => {
     state.people.p1 = e.target.value || 'Persoon 1';
     document.getElementById('labelPerson1').textContent = state.people.p1;
@@ -1218,7 +1699,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = nameInput.value.trim();
     if(!name) return;
     const id = uid('cat');
-    state.categories.push({ id, name, color: colorInput.value, isTransfer: false });
+    state.categories.push({ id, name, color: colorInput.value, isTransfer: false, isFixed: false });
     nameInput.value = '';
     saveState(); refreshAll();
   });
