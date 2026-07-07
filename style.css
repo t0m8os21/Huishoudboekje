@@ -471,6 +471,20 @@ body{
 .add-row-pot{ align-items: center; }
 .add-row-pot input[type=number]{ max-width: 130px; }
 
+/* ---------- Vaste vs variabele lasten ---------- */
+.fixed-var-bar{
+  display: flex;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.fixed-var-seg.fixed{ background: #3C5A47; }
+.fixed-var-seg.variable{ background: #C9A227; }
+.fixed-var-legend{ display: flex; gap: 20px; font-size: 12.5px; flex-wrap: wrap; }
+.fixed-var-legend span{ display: flex; align-items: center; gap: 6px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 880px){
   .ledger-body{ flex-direction: column; }
