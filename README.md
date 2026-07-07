@@ -37,6 +37,22 @@ Onder **Instellingen** kun je:
 - herkenningsregels beheren (welke tekst in een omschrijving hoort bij welke categorie),
 - een categorie markeren als "telt niet mee in saldo" — handig voor overboekingen tussen jullie eigen rekeningen of overboekingen naar een spaarrekening, zodat die niet als "uitgave" meetellen in het spaarsaldo.
 
+## Schulden (leningen &amp; hypotheek)
+
+Onder het tabblad **Schulden** houd je leningen en de hypotheek bij, per persoon of samen. Voor elke schuld vul je een **peildatum** en het **saldo op die peildatum** in — bijvoorbeeld het bedrag van het laatste jaaroverzicht van DUO of de hypotheekverstrekker. Rente wordt niet automatisch berekend (dat is te onnauwkeurig zonder een volledig aflossingsschema); werk in plaats daarvan het saldo periodiek (bv. jaarlijks) bij met de officiële cijfers.
+
+Aflossingen die wél als aparte transactie op je afschrift staan (categorie "Aflossing schuld") worden automatisch aan de juiste schuld gekoppeld op basis van de tegenrekening, en tellen mee vanaf de peildatum. Net als bij spaarpotjes is dit altijd handmatig te corrigeren, en is er een knop om alles opnieuw automatisch te koppelen.
+
+Voor een hypotheek kun je ook een **WOZ-waarde** invullen; de site berekent dan automatisch de overwaarde (WOZ-waarde min openstaande hypotheekschuld).
+
+## Vaste lasten vs. variabele uitgaven
+
+In het Maand- en Jaaroverzicht zie je een balkje dat uitgaven opsplitst in vaste lasten (bv. woning, verzekeringen, abonnementen) en variabele uitgaven (bv. boodschappen, uit eten). Welke categorieën als "vaste last" gelden, stel je zelf in bij **Instellingen → Categorieën**.
+
+## Abonnementen
+
+Het tabblad **Abonnementen** speurt automatisch naar terugkerende uitgaven: dezelfde omschrijving met een vergelijkbaar bedrag in minstens twee verschillende maanden. Handig om vergeten abonnementen te ontdekken. Dit is een schatting op basis van je transacties, geen aparte administratie — mist de site iets, dan verandert dat vanzelf zodra er meer maanden aan data zijn. Onterecht gevonden abonnementen kun je met het kruisje verbergen.
+
 ## Vermogensopbouw
 
 Onder het tabblad **Vermogensopbouw** houd je spaarpotjes bij (bijvoorbeeld "Vakantie" of "Noodfonds"), inclusief van wie elk potje is en wat het startsaldo was. Potjes voeg je zelf handmatig toe.
