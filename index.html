@@ -121,6 +121,14 @@
           <select id="maandSelect" class="select-input"></select>
         </div>
 
+        <div class="pane-header-row" style="margin-top:-8px;">
+          <div class="person-view-toggle" id="maandPersonToggle">
+            <button data-person="all" class="active">Gezamenlijk</button>
+            <button data-person="p1"></button>
+            <button data-person="p2"></button>
+          </div>
+        </div>
+
         <div class="saldo-band" id="maandSaldoBand"></div>
 
         <div class="panel">
@@ -163,6 +171,7 @@
             <h3 class="panel-title" style="margin:0;">Alle transacties deze maand</h3>
             <select id="maandCategorieFilter" class="select-input"></select>
           </div>
+          <p class="panel-lead-small">Schoot je iets voor en kreeg je een deel terug (bv. via Tikkie)? Categoriseer de ontvangen betaling in dezelfde categorie als de oorspronkelijke uitgave (bv. "Uit eten") &mdash; die wordt dan automatisch van de uitgaven in die categorie afgetrokken, in plaats van als los inkomen geteld.</p>
           <div class="table-wrap">
             <table class="ledger-table" id="tableMaandTransacties"></table>
           </div>
@@ -174,6 +183,14 @@
         <div class="pane-header-row">
           <h2 class="pane-title">Jaaroverzicht</h2>
           <select id="jaarSelect" class="select-input"></select>
+        </div>
+
+        <div class="pane-header-row" style="margin-top:-8px;">
+          <div class="person-view-toggle" id="jaarPersonToggle">
+            <button data-person="all" class="active">Gezamenlijk</button>
+            <button data-person="p1"></button>
+            <button data-person="p2"></button>
+          </div>
         </div>
 
         <div class="saldo-band" id="jaarSaldoBand"></div>
