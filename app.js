@@ -55,6 +55,8 @@ const DEFAULT_RULES = [
 ];
 
 let state = loadState();
+let maandViewPerson = 'all'; // 'all' | 'p1' | 'p2' — puur UI-weergavestate, niet opgeslagen
+let jaarViewPerson = 'all';
 
 function defaultState(){
   return {
@@ -200,7 +202,6 @@ function findCategoryForDescription(desc){
 function reapplyRules(){
   let changed = 0;
   for(const t of state.transactions){
-    if(t.amount >= 0) continue; // rules are only meant for expenses
     const fullDesc = (t.description + ' ' + (t.details || '')).trim();
     const matched = findCategoryForDescription(fullDesc);
     if(matched && matched !== t.category){
@@ -404,29 +405,60 @@ function getYearsAvailable(){
   return [...new Set(state.transactions.map(t => yearKey(t.date)))].sort();
 }
 
+/**
+ * Categoriseer je een terugbetaling (bv. een Tikkie) in dezelfde categorie
+ * als de oorspronkelijke uitgave (bv. "Uit eten"), dan trekt de site dat
+ * bedrag automatisch af van de uitgaven in die categorie, per persoon.
+ * Alleen bedragen in de categorie "Inkomen" (of nog niet gecategoriseerd)
+ * tellen als echt inkomen; bedragen in een gewone uitgave-categorie worden
+ * gezien als terugontvangen geld voor die categorie, niet als inkomen.
+ */
 function aggregate(transactions){
   const incomeByPerson = { p1: 0, p2: 0 };
   const expenseByPerson = { p1: 0, p2: 0 };
-  const categoryTotals = {}; // catId -> total expense (abs)
-  const categoryByPerson = {}; // catId -> {p1,p2}
+  const categoryTotals = {}; // catId -> netto uitgave (abs, na verrekening met terugontvangen bedragen)
+  const categoryByPerson = {}; // catId -> {p1,p2}, netto per persoon
   let fixedExpense = 0, variableExpense = 0;
+
+  const grossByCatPerson = {};    // catId -> {p1,p2} som van uitgaven
+  const reimburseByCatPerson = {}; // catId -> {p1,p2} som van terugontvangen bedragen in die categorie
 
   for(const t of transactions){
     const cat = t.category ? categoryById(t.category) : null;
-    if(cat && cat.isTransfer) continue; // skip internal transfers/savings moves from totals
+    if(cat && cat.isTransfer) continue; // sparen/aflossing/onderling tellen nergens in mee
 
-    if(t.amount >= 0){
+    const isRealIncome = t.amount >= 0 && (!cat || cat.id === 'inkomen');
+    if(isRealIncome){
       incomeByPerson[t.person] = (incomeByPerson[t.person] || 0) + t.amount;
+      continue;
+    }
+
+    const catId = t.category || 'overig';
+    if(!grossByCatPerson[catId]) grossByCatPerson[catId] = { p1: 0, p2: 0 };
+    if(!reimburseByCatPerson[catId]) reimburseByCatPerson[catId] = { p1: 0, p2: 0 };
+
+    if(t.amount < 0){
+      grossByCatPerson[catId][t.person] += -t.amount;
     } else {
-      const abs = Math.abs(t.amount);
-      expenseByPerson[t.person] = (expenseByPerson[t.person] || 0) + abs;
-      const catId = t.category || 'overig';
-      categoryTotals[catId] = (categoryTotals[catId] || 0) + abs;
-      if(!categoryByPerson[catId]) categoryByPerson[catId] = { p1: 0, p2: 0 };
-      categoryByPerson[catId][t.person] = (categoryByPerson[catId][t.person] || 0) + abs;
-      if(cat && cat.isFixed) fixedExpense += abs; else variableExpense += abs;
+      reimburseByCatPerson[catId][t.person] += t.amount;
     }
   }
+
+  const allCatIds = new Set([...Object.keys(grossByCatPerson), ...Object.keys(reimburseByCatPerson)]);
+  for(const catId of allCatIds){
+    const cat = categoryById(catId);
+    const gross = grossByCatPerson[catId] || { p1: 0, p2: 0 };
+    const reimb = reimburseByCatPerson[catId] || { p1: 0, p2: 0 };
+    const netP1 = Math.max(0, gross.p1 - reimb.p1);
+    const netP2 = Math.max(0, gross.p2 - reimb.p2);
+    if(netP1 === 0 && netP2 === 0 && gross.p1 === 0 && gross.p2 === 0) continue; // pure income category, niets te tonen hier
+    categoryByPerson[catId] = { p1: netP1, p2: netP2 };
+    categoryTotals[catId] = netP1 + netP2;
+    expenseByPerson.p1 += netP1;
+    expenseByPerson.p2 += netP2;
+    if(cat && cat.isFixed) fixedExpense += (netP1 + netP2); else variableExpense += (netP1 + netP2);
+  }
+
   const totalIncome = incomeByPerson.p1 + incomeByPerson.p2;
   const totalExpense = expenseByPerson.p1 + expenseByPerson.p2;
   return {
@@ -751,7 +783,7 @@ function handleFileUpload(personKey, file){
 function renderCategorizeTab(){
   const list = document.getElementById('categorizeList');
   const empty = document.getElementById('categorizeEmpty');
-  const uncategorized = state.transactions.filter(t => !t.category && t.amount < 0);
+  const uncategorized = state.transactions.filter(t => !t.category);
   const badge = document.getElementById('uncategorizedBadge');
   if(uncategorized.length){ badge.hidden = false; badge.textContent = uncategorized.length; }
   else{ badge.hidden = true; }
@@ -767,17 +799,19 @@ function renderCategorizeTab(){
 
   list.innerHTML = uncategorized.map(t => {
     const options = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    const isIncome = t.amount >= 0;
     return `
       <div class="categorize-item" data-id="${t.id}">
         <div class="desc">
           <div class="main">${escapeHtml(t.description)}</div>
           <div class="meta">${t.date} · ${state.people[t.person]}${t.details ? ' · ' + escapeHtml(t.details) : ''}</div>
         </div>
-        <div class="amount num neg">${formatEUR(t.amount)}</div>
+        <div class="amount num ${isIncome ? 'pos' : 'neg'}">${formatEUR(t.amount)}</div>
         <select class="select-input cat-select">
           <option value="">Kies categorie…</option>
           ${options}
         </select>
+        ${isIncome ? `<span class="panel-lead-small" style="margin:0;max-width:180px;">Geen salaris? Kies dan de categorie waar dit bij hoort (bv. "Uit eten") — het wordt dan afgetrokken van de uitgaven daar, in plaats van als inkomen geteld.</span>` : ''}
         <label class="remember">
           <input type="checkbox" class="remember-check" checked> onthoud dit
         </label>
@@ -818,6 +852,18 @@ function escapeHtml(str){
 
 /* ===================== Tab: Maand ===================== */
 
+function renderPersonToggle(toggleId, current, onSelect){
+  const el = document.getElementById(toggleId);
+  if(!el) return;
+  const buttons = el.querySelectorAll('button');
+  if(buttons[1]) buttons[1].textContent = state.people.p1;
+  if(buttons[2]) buttons[2].textContent = state.people.p2;
+  buttons.forEach(b => {
+    b.classList.toggle('active', b.dataset.person === current);
+    b.onclick = () => onSelect(b.dataset.person);
+  });
+}
+
 function renderMaandTab(){
   const select = document.getElementById('maandSelect');
   const months = getMonthsAvailable();
@@ -827,13 +873,20 @@ function renderMaandTab(){
   else if(months.includes(prevValue)) select.value = prevValue;
   else select.value = months[months.length-1];
 
+  renderPersonToggle('maandPersonToggle', maandViewPerson, (p) => { maandViewPerson = p; renderMaandTab(); });
+
   const key = select.value;
-  const txs = state.transactions.filter(t => monthKey(t.date) === key);
+  const txs = state.transactions.filter(t => monthKey(t.date) === key && (maandViewPerson === 'all' || t.person === maandViewPerson));
   const agg = aggregate(txs);
 
   renderSaldoBand(document.getElementById('maandSaldoBand'), agg);
   renderFixedVariableBar('fixedVarMaand', agg);
-  renderPersonBars('chartMaandPersonen', agg);
+  const personenEl = document.getElementById('chartMaandPersonen');
+  if(maandViewPerson === 'all'){
+    renderPersonBars('chartMaandPersonen', agg);
+  } else {
+    personenEl.innerHTML = `<p class="empty-state">Kies "Gezamenlijk" hierboven om te zien wie wat uitgeeft.</p>`;
+  }
   renderCategoryDonut('chartMaandCategorie', agg);
   renderCategoryDonutVsIncome('chartMaandCategorieInkomen', agg);
   renderCategoryTable(document.getElementById('tableMaandCategorie'), agg);
@@ -884,9 +937,11 @@ function renderMaandTab(){
   }
   const catOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   for(const t of sorted){
+    const cat = t.category ? categoryById(t.category) : null;
+    const isReimbursement = t.amount >= 0 && cat && !cat.isTransfer && cat.id !== 'inkomen';
     html += `<tr data-id="${t.id}">
       <td>${t.date}</td>
-      <td>${escapeHtml(t.description)}</td>
+      <td>${escapeHtml(t.description)}${isReimbursement ? ' <span class="person-tag" title="Dit bedrag wordt afgetrokken van de uitgaven in deze categorie">terugontvangen</span>' : ''}</td>
       <td><span class="person-tag">${state.people[t.person]}</span></td>
       <td>
         <select class="select-input edit-cat-select">
@@ -926,15 +981,22 @@ function renderJaarTab(){
   else if(years.includes(prevValue)) select.value = prevValue;
   else select.value = years[years.length-1];
 
+  renderPersonToggle('jaarPersonToggle', jaarViewPerson, (p) => { jaarViewPerson = p; renderJaarTab(); });
+
   const year = select.value;
-  const txs = state.transactions.filter(t => yearKey(t.date) === year);
+  const txs = state.transactions.filter(t => yearKey(t.date) === year && (jaarViewPerson === 'all' || t.person === jaarViewPerson));
   const agg = aggregate(txs);
 
   renderSaldoBand(document.getElementById('jaarSaldoBand'), agg, 'Gespaard dit jaar');
   renderFixedVariableBar('fixedVarJaar', agg);
   renderCategoryDonut('chartJaarCategorie', agg);
   renderCategoryDonutVsIncome('chartJaarCategorieInkomen', agg);
-  renderPersonBars('chartJaarPersonen', agg);
+  const personenEl = document.getElementById('chartJaarPersonen');
+  if(jaarViewPerson === 'all'){
+    renderPersonBars('chartJaarPersonen', agg);
+  } else {
+    personenEl.innerHTML = `<p class="empty-state">Kies "Gezamenlijk" hierboven om te zien wie wat uitgeeft.</p>`;
+  }
   renderCategoryTable(document.getElementById('tableJaarCategorie'), agg);
 
   // Per-month breakdown within year
