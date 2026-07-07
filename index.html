@@ -49,12 +49,20 @@
         <span class="tab-index">05</span>
         <span class="tab-label">Vermogensopbouw</span>
       </button>
-      <button class="tab-tab" data-tab="totaal">
+      <button class="tab-tab" data-tab="schulden">
         <span class="tab-index">06</span>
+        <span class="tab-label">Schulden</span>
+      </button>
+      <button class="tab-tab" data-tab="abonnementen">
+        <span class="tab-index">07</span>
+        <span class="tab-label">Abonnementen</span>
+      </button>
+      <button class="tab-tab" data-tab="totaal">
+        <span class="tab-index">08</span>
         <span class="tab-label">Totaaloverzicht</span>
       </button>
       <button class="tab-tab" data-tab="instellingen">
-        <span class="tab-index">07</span>
+        <span class="tab-index">09</span>
         <span class="tab-label">Instellingen</span>
       </button>
     </nav>
@@ -115,6 +123,11 @@
 
         <div class="saldo-band" id="maandSaldoBand"></div>
 
+        <div class="panel">
+          <h3 class="panel-title">Vaste lasten vs. variabele uitgaven</h3>
+          <div id="fixedVarMaand"></div>
+        </div>
+
         <div class="split-grid">
           <div class="panel">
             <h3 class="panel-title">Wie geeft wat uit</h3>
@@ -159,6 +172,11 @@
         </div>
 
         <div class="saldo-band" id="jaarSaldoBand"></div>
+
+        <div class="panel">
+          <h3 class="panel-title">Vaste lasten vs. variabele uitgaven</h3>
+          <div id="fixedVarJaar"></div>
+        </div>
 
         <div class="panel">
           <h3 class="panel-title">Inkomsten, uitgaven en sparen per maand</h3>
@@ -232,6 +250,82 @@
             <select id="newPotRuleTarget" class="select-input"></select>
             <button class="btn btn-outline" id="btnAddPotRule">Toevoegen</button>
           </div>
+        </div>
+      </section>
+
+      <!-- TAB: SCHULDEN -->
+      <section class="tab-pane" id="pane-schulden">
+        <h2 class="pane-title">Schulden</h2>
+        <p class="pane-lead">Houd leningen en de hypotheek bij. Rente wordt niet automatisch verwerkt &mdash; werk het saldo periodiek bij aan de hand van je jaaroverzicht van de geldverstrekker (bv. DUO of de hypotheekverstrekker). Aflossingen via je afschrift kunnen daarnaast automatisch gekoppeld worden.</p>
+
+        <div class="saldo-band" id="schuldenSaldoBand"></div>
+
+        <div class="panel">
+          <div class="pane-header-row" style="margin-bottom:14px;">
+            <h3 class="panel-title" style="margin:0;">Leningen &amp; hypotheek</h3>
+          </div>
+          <div id="debtList" class="pot-list"></div>
+          <div class="add-row add-row-pot">
+            <input type="text" id="newDebtName" class="text-input" placeholder="Naam (bv. Studieschuld DUO)">
+            <select id="newDebtType" class="select-input">
+              <option value="lening">Lening</option>
+              <option value="hypotheek">Hypotheek</option>
+            </select>
+            <select id="newDebtOwner" class="select-input"></select>
+          </div>
+          <div class="add-row add-row-pot">
+            <input type="date" id="newDebtRefDate" class="text-input" title="Peildatum">
+            <input type="number" step="0.01" id="newDebtRefBalance" class="text-input" placeholder="Openstaand saldo (€)">
+            <input type="number" step="0.01" id="newDebtInterest" class="text-input" placeholder="Rente % per jaar (optioneel)">
+            <input type="number" step="0.01" id="newDebtMonthly" class="text-input" placeholder="Maandlast € (optioneel)">
+            <input type="number" step="0.01" id="newDebtWoz" class="text-input" placeholder="WOZ-waarde € (alleen hypotheek)">
+            <button class="btn btn-outline" id="btnAddDebt">Toevoegen</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="pane-header-row align-top">
+            <div>
+              <h3 class="panel-title" style="margin-bottom:4px;">Nog te koppelen aan een schuld</h3>
+              <p class="panel-lead-small">Deze aflossingen zijn nog niet aan een lening of hypotheek gekoppeld.</p>
+            </div>
+            <button class="btn btn-outline" id="btnReapplyDebtRules">Opnieuw automatisch koppelen</button>
+          </div>
+          <div id="debtUnlinkedList" class="categorize-list"></div>
+          <p class="empty-state" id="debtUnlinkedEmpty" hidden>Alle aflossingen zijn gekoppeld.</p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Alle aflossingen</h3>
+          <p class="panel-lead-small">Hier kun je de koppeling van elke aflossing op elk moment handmatig corrigeren.</p>
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableSchuldenTransacties"></table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Koppelregels (op tegenrekening of tekst)</h3>
+          <div id="debtRuleManageList" class="rule-manage-list"></div>
+          <div class="add-row">
+            <input type="text" id="newDebtRuleKeyword" class="text-input" placeholder="bv. NL12DUOB0001234567 of een woord uit de omschrijving">
+            <select id="newDebtRuleTarget" class="select-input"></select>
+            <button class="btn btn-outline" id="btnAddDebtRule">Toevoegen</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: ABONNEMENTEN -->
+      <section class="tab-pane" id="pane-abonnementen">
+        <h2 class="pane-title">Abonnementen</h2>
+        <p class="pane-lead">Terugkerende uitgaven die de site zelf herkent op basis van gelijke omschrijving en bedrag &mdash; handig om vergeten abonnementen te spotten. Dit is een automatische inschatting, geen aparte categorie-invoer.</p>
+
+        <div class="saldo-band" id="abonnementenSaldoBand"></div>
+
+        <div class="panel">
+          <div class="table-wrap">
+            <table class="ledger-table" id="tableAbonnementen"></table>
+          </div>
+          <p class="empty-state" id="abonnementenEmpty" hidden>Nog geen terugkerende uitgaven gevonden. Upload een paar maanden aan afschriften om abonnementen te kunnen herkennen.</p>
         </div>
       </section>
 
