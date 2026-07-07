@@ -499,6 +499,74 @@ function renderCategoryDonut(mountId, agg){
   `;
 }
 
+/**
+ * Zelfde donut+legende-vorm als renderCategoryDonut, maar het aandeel wordt
+ * berekend t.o.v. het verdiende inkomen in plaats van t.o.v. de totale
+ * uitgaven. Geeft ook een "resterend inkomen"-segment, of een waarschuwing
+ * als er in deze periode meer is uitgegeven dan er is binnengekomen.
+ */
+function renderCategoryDonutVsIncome(mountId, agg){
+  const el = document.getElementById(mountId);
+  if(!el) return;
+  const entries = Object.entries(agg.categoryTotals).sort((a,b) => b[1]-a[1]);
+  if(agg.totalIncome <= 0){
+    el.innerHTML = '<p class="empty-state">Geen inkomen bekend in deze periode om uitgaven tegen af te zetten.</p>';
+    return;
+  }
+  if(entries.length === 0){
+    el.innerHTML = '<p class="empty-state">Nog geen uitgaven in deze periode.</p>';
+    return;
+  }
+
+  const denom = agg.totalIncome;
+  const overspent = agg.totalExpense > denom;
+  const visualScale = overspent ? denom / agg.totalExpense : 1; // keep the circle whole even when overspent
+
+  const size = 176, radius = 68, stroke = 24, c = size/2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  let arcs = '';
+  for(const [id, val] of entries){
+    const cat = categoryById(id) || { name: id, color: '#96A0A6' };
+    const frac = (val / denom) * visualScale;
+    const dash = Math.max(frac * circumference, 0.6);
+    const realPct = Math.round((val/denom) * 100);
+    arcs += `<circle cx="${c}" cy="${c}" r="${radius}" fill="none" stroke="${cat.color}" stroke-width="${stroke}"
+      stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}"
+      transform="rotate(-90 ${c} ${c})"><title>${escapeAttr(cat.name)}: ${formatEUR(val)} (${realPct}% van inkomen)</title></circle>`;
+    offset += dash;
+  }
+  let remainingRow = '';
+  if(!overspent){
+    const remaining = denom - agg.totalExpense;
+    const remFrac = remaining / denom;
+    const dash = Math.max(remFrac * circumference, 0.6);
+    arcs += `<circle cx="${c}" cy="${c}" r="${radius}" fill="none" stroke="#D8D0BC" stroke-width="${stroke}"
+      stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}"
+      transform="rotate(-90 ${c} ${c})"><title>Nog niet uitgegeven: ${formatEUR(remaining)}</title></circle>`;
+    const remPct = Math.round(remFrac * 100);
+    remainingRow = `<div class="legend-row"><span class="cat-dot" style="background:#D8D0BC"></span>Resterend (niet uitgegeven)<span class="legend-val">${formatEUR(remaining)} · ${remPct}%</span></div>`;
+  }
+
+  const legend = entries.map(([id, val]) => {
+    const cat = categoryById(id) || { name: id, color: '#96A0A6' };
+    const pct = Math.round((val/denom) * 100);
+    return `<div class="legend-row"><span class="cat-dot" style="background:${cat.color}"></span>${cat.name}<span class="legend-val">${formatEUR(val)} · ${pct}%</span></div>`;
+  }).join('') + remainingRow;
+
+  const warning = overspent
+    ? `<p class="panel-lead-small" style="color:var(--brick);margin-top:10px;">Let op: de uitgaven deze periode (${formatEUR(agg.totalExpense)}) zijn hoger dan het inkomen (${formatEUR(agg.totalIncome)}). De percentages hierboven zijn t.o.v. het inkomen; de taartpunten zijn naar verhouding verkleind zodat ze in de cirkel passen.</p>`
+    : '';
+
+  el.innerHTML = `
+    <div class="donut-wrap">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="Uitgaven per categorie t.o.v. inkomen">${arcs}</svg>
+      <div class="donut-legend">${legend}</div>
+    </div>
+    ${warning}
+  `;
+}
+
 function renderPersonBars(mountId, agg){
   const el = document.getElementById(mountId);
   if(!el) return;
@@ -767,6 +835,7 @@ function renderMaandTab(){
   renderFixedVariableBar('fixedVarMaand', agg);
   renderPersonBars('chartMaandPersonen', agg);
   renderCategoryDonut('chartMaandCategorie', agg);
+  renderCategoryDonutVsIncome('chartMaandCategorieInkomen', agg);
   renderCategoryTable(document.getElementById('tableMaandCategorie'), agg);
 
   // Sparen-transacties zijn uitgesloten van het spaarsaldo (het zijn geen
@@ -864,6 +933,7 @@ function renderJaarTab(){
   renderSaldoBand(document.getElementById('jaarSaldoBand'), agg, 'Gespaard dit jaar');
   renderFixedVariableBar('fixedVarJaar', agg);
   renderCategoryDonut('chartJaarCategorie', agg);
+  renderCategoryDonutVsIncome('chartJaarCategorieInkomen', agg);
   renderPersonBars('chartJaarPersonen', agg);
   renderCategoryTable(document.getElementById('tableJaarCategorie'), agg);
 
