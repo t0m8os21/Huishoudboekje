@@ -931,9 +931,9 @@ function renderMaandTab(){
 
   const tableEl = document.getElementById('tableMaandTransacties');
   const sorted = [...filteredTxs].sort((a,b) => b.date.localeCompare(a.date));
-  let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th>Categorie</th><th class="num">Bedrag</th><th></th></tr></thead><tbody>`;
+  let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th>Categorie</th><th class="num">Bedrag</th></tr></thead><tbody>`;
   if(sorted.length === 0){
-    html += `<tr><td colspan="6" class="empty-state">Geen transacties${activeFilter ? ' voor deze filter' : ''}.</td></tr>`;
+    html += `<tr><td colspan="5" class="empty-state">Geen transacties${activeFilter ? ' voor deze filter' : ''}.</td></tr>`;
   }
   const catOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   for(const t of sorted){
@@ -950,35 +950,23 @@ function renderMaandTab(){
         </select>
       </td>
       <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
-      <td class="delete-cell"><button class="remove-btn delete-tx-btn" title="Transactie verwijderen">🗑</button></td>
     </tr>`;
   }
   html += '</tbody>';
   tableEl.innerHTML = html;
 
   tableEl.querySelectorAll('tr[data-id]').forEach(row => {
-    const tx = txs.find(t => t.id === row.dataset.id);
-    if(!tx) return;
     const select = row.querySelector('.edit-cat-select');
-    if(select){
-      select.value = tx.category || '';
-      select.addEventListener('change', (e) => {
-        tx.category = e.target.value || null;
-        maybeAutoAssignPot(tx);
-        maybeAutoAssignDebt(tx);
-        saveState();
-        refreshAll();
-      });
-    }
-    const deleteBtn = row.querySelector('.delete-tx-btn');
-    if(deleteBtn){
-      deleteBtn.addEventListener('click', () => {
-        if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
-        state.transactions = state.transactions.filter(t => t.id !== tx.id);
-        saveState();
-        refreshAll();
-      });
-    }
+    const tx = txs.find(t => t.id === row.dataset.id);
+    if(!select || !tx) return;
+    select.value = tx.category || '';
+    select.addEventListener('change', (e) => {
+      tx.category = e.target.value || null;
+      maybeAutoAssignPot(tx);
+      maybeAutoAssignDebt(tx);
+      saveState();
+      refreshAll();
+    });
   });
 }
 
