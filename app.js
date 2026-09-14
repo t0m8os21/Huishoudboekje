@@ -66,6 +66,7 @@ function defaultState(){
     transactions: [], // {id, date, person, description, tegenrekening, amount, category, potId, debtId}
     pots: [], // {id, name, owner: 'p1'|'p2'|'samen', startBalance, color}
     potRules: [], // {keyword, potId} matched against tegenrekening + omschrijving
+    savingsTransactions: [], // {id, potId, date, description, amount, tegenrekening} — direct import van een spaarrekening-CSV
     debts: [], // {id, name, owner, type:'lening'|'hypotheek', referenceDate, referenceBalance, interestRate, monthlyPayment, wozValue}
     debtRules: [], // {keyword, debtId}
     dismissedSubscriptions: [], // normalized description keys the user hid from the abonnementen-detector
@@ -82,6 +83,7 @@ function loadState(){
     if(!parsed.rules) parsed.rules = JSON.parse(JSON.stringify(DEFAULT_RULES));
     if(!parsed.pots) parsed.pots = [];
     if(!parsed.potRules) parsed.potRules = [];
+    if(!parsed.savingsTransactions) parsed.savingsTransactions = [];
     if(!parsed.debts) parsed.debts = [];
     if(!parsed.debtRules) parsed.debtRules = [];
     if(!parsed.dismissedSubscriptions) parsed.dismissedSubscriptions = [];
@@ -199,17 +201,33 @@ function findCategoryForDescription(desc){
   return null;
 }
 
+/**
+ * Centrale plek om een transactie een (nieuwe) categorie te geven. Blijkt een
+ * transactie toch geen spaaractie of aflossing te zijn (of andersom), dan
+ * wordt een eventuele koppeling aan een potje/schuld die niet meer past
+ * automatisch opgeschoond, en wordt meteen geprobeerd een nieuwe koppeling te
+ * vinden als de nieuwe categorie dat wel vereist.
+ */
+function applyCategoryChange(t, newCategoryId){
+  t.category = newCategoryId || null;
+  if(t.category !== 'sparen') t.potId = null;
+  if(t.category !== 'aflossing') t.debtId = null;
+  maybeAutoAssignPot(t);
+  maybeAutoAssignDebt(t);
+}
+
 function reapplyRules(){
   let changed = 0;
   for(const t of state.transactions){
     const fullDesc = (t.description + ' ' + (t.details || '')).trim();
     const matched = findCategoryForDescription(fullDesc);
     if(matched && matched !== t.category){
-      t.category = matched;
+      applyCategoryChange(t, matched);
       changed++;
+    } else {
+      maybeAutoAssignPot(t);
+      maybeAutoAssignDebt(t);
     }
-    maybeAutoAssignPot(t);
-    maybeAutoAssignDebt(t);
   }
   return changed;
 }
@@ -254,9 +272,23 @@ function getSparenTransactions(){
   return state.transactions.filter(t => t.category === 'sparen');
 }
 
+function getSavingsTransactionsForPot(potId){
+  return state.savingsTransactions.filter(t => t.potId === potId);
+}
+
+/**
+ * Is voor dit potje een eigen spaarrekening-CSV geüpload, dan is dát de bron
+ * van waarheid (inclusief rente, geen categoriseren nodig). Anders wordt het
+ * saldo zoals voorheen afgeleid uit herkende "Sparen"-overboekingen op de
+ * betaalrekening.
+ */
 function computePotBalance(potId){
   const pot = potById(potId);
   if(!pot) return 0;
+  const savingsTxs = getSavingsTransactionsForPot(potId);
+  if(savingsTxs.length > 0){
+    return (pot.startBalance || 0) + savingsTxs.reduce((s, t) => s + t.amount, 0);
+  }
   let balance = pot.startBalance || 0;
   for(const t of state.transactions){
     if(t.potId === potId) balance += -t.amount; // money leaving checking = deposit into pot
@@ -394,6 +426,61 @@ function parseINGFile(text, personKey){
     added++;
   }
   return { added, duplicates, needsCategory };
+}
+
+/**
+ * Importeert het CSV-afschrift van een spaarrekening rechtstreeks, gekoppeld
+ * aan één potje. Elke mutatie (storting, opname, rente) wordt bewaard; geen
+ * categorisering nodig, want dit telt nooit mee als gewone inkomsten/uitgaven.
+ * Zodra een potje minstens één zo'n mutatie heeft, wordt dit de bron van
+ * waarheid voor het saldo van dat potje (zie computePotBalance).
+ */
+function parseSavingsFile(text, potId){
+  const rows = parseCSV(text, ';');
+  if(rows.length < 1) return { added: 0, duplicates: 0 };
+
+  const hasHeader = rowLooksLikeHeader(rows[0]);
+  let idxDatum, idxNaam, idxTegen, idxAfBij, idxBedrag, idxMeded, dataStart;
+
+  if(hasHeader){
+    const header = rows[0];
+    idxDatum = findColumnIndex(header, 'datum');
+    idxNaam = findColumnIndex(header, 'naam / omschrijving', 'naam/omschrijving');
+    idxTegen = findColumnIndex(header, 'tegenrekening');
+    idxAfBij = findColumnIndex(header, 'af bij', 'af/bij');
+    idxBedrag = findColumnIndex(header, 'bedrag (eur)', 'bedrag');
+    idxMeded = findColumnIndex(header, 'mededelingen');
+    dataStart = 1;
+  } else {
+    idxDatum = 0; idxNaam = 1; idxTegen = 3; idxAfBij = 5; idxBedrag = 6; idxMeded = 8;
+    dataStart = 0;
+  }
+
+  let added = 0, duplicates = 0;
+  const existingIds = new Set(state.savingsTransactions.map(t => t.id));
+
+  for(let i=dataStart;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || r.length < 2) continue;
+    const date = parseINGDate(r[idxDatum] || '');
+    const naam = (r[idxNaam] || '').trim();
+    const tegen = idxTegen !== -1 ? (r[idxTegen] || '').trim() : '';
+    const afbij = idxAfBij !== -1 ? (r[idxAfBij] || '').trim().toLowerCase() : '';
+    let amount = parseINGAmount(r[idxBedrag] || '0');
+    if(afbij === 'af' || afbij === 'debit') amount = -Math.abs(amount);
+    else if(afbij === 'bij' || afbij === 'credit') amount = Math.abs(amount);
+    const mededelingen = idxMeded !== -1 ? (r[idxMeded] || '').trim() : '';
+
+    if(!date || !naam) continue;
+
+    const id = simpleHash(['spaar', potId, date, amount.toFixed(2), naam, mededelingen].join('|'));
+    if(existingIds.has(id)){ duplicates++; continue; }
+
+    state.savingsTransactions.push({ id, potId, date, description: naam, amount, tegenrekening: tegen });
+    existingIds.add(id);
+    added++;
+  }
+  return { added, duplicates };
 }
 
 /* ===================== Aggregation ===================== */
@@ -829,9 +916,7 @@ function renderCategorizeTab(){
       const catId = select.value;
       if(!catId) { select.focus(); return; }
       const tx = state.transactions.find(t => t.id === id);
-      tx.category = catId;
-      maybeAutoAssignPot(tx);
-      maybeAutoAssignDebt(tx);
+      applyCategoryChange(tx, catId);
       if(remember){
         const keyword = tx.description.trim().toLowerCase().slice(0, 40);
         if(keyword && !state.rules.some(r => r.keyword.toLowerCase() === keyword)){
@@ -931,9 +1016,9 @@ function renderMaandTab(){
 
   const tableEl = document.getElementById('tableMaandTransacties');
   const sorted = [...filteredTxs].sort((a,b) => b.date.localeCompare(a.date));
-  let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th>Categorie</th><th class="num">Bedrag</th></tr></thead><tbody>`;
+  let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th>Categorie</th><th class="num">Bedrag</th><th></th></tr></thead><tbody>`;
   if(sorted.length === 0){
-    html += `<tr><td colspan="5" class="empty-state">Geen transacties${activeFilter ? ' voor deze filter' : ''}.</td></tr>`;
+    html += `<tr><td colspan="6" class="empty-state">Geen transacties${activeFilter ? ' voor deze filter' : ''}.</td></tr>`;
   }
   const catOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   for(const t of sorted){
@@ -950,23 +1035,33 @@ function renderMaandTab(){
         </select>
       </td>
       <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
+      <td class="delete-cell"><button class="remove-btn delete-tx-btn" title="Transactie verwijderen">🗑</button></td>
     </tr>`;
   }
   html += '</tbody>';
   tableEl.innerHTML = html;
 
   tableEl.querySelectorAll('tr[data-id]').forEach(row => {
-    const select = row.querySelector('.edit-cat-select');
     const tx = txs.find(t => t.id === row.dataset.id);
-    if(!select || !tx) return;
-    select.value = tx.category || '';
-    select.addEventListener('change', (e) => {
-      tx.category = e.target.value || null;
-      maybeAutoAssignPot(tx);
-      maybeAutoAssignDebt(tx);
-      saveState();
-      refreshAll();
-    });
+    if(!tx) return;
+    const select = row.querySelector('.edit-cat-select');
+    if(select){
+      select.value = tx.category || '';
+      select.addEventListener('change', (e) => {
+        applyCategoryChange(tx, e.target.value);
+        saveState();
+        refreshAll();
+      });
+    }
+    const deleteBtn = row.querySelector('.delete-tx-btn');
+    if(deleteBtn){
+      deleteBtn.addEventListener('click', () => {
+        if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
+        state.transactions = state.transactions.filter(t => t.id !== tx.id);
+        saveState();
+        refreshAll();
+      });
+    }
   });
 }
 
@@ -1057,7 +1152,11 @@ function renderVermogenTab(){
   if(state.pots.length === 0){
     potListEl.innerHTML = '<p class="empty-state">Nog geen spaarpotjes toegevoegd. Voeg er hieronder een toe.</p>';
   } else {
-    potListEl.innerHTML = balances.map(({pot, balance}) => `
+    potListEl.innerHTML = balances.map(({pot, balance}) => {
+      const savingsTxs = getSavingsTransactionsForPot(pot.id);
+      const linked = savingsTxs.length > 0;
+      const lastDate = linked ? savingsTxs.reduce((max, t) => t.date > max ? t.date : max, savingsTxs[0].date) : null;
+      return `
       <div class="pot-card" data-id="${pot.id}">
         <input type="text" class="pot-name-input" value="${escapeAttr(pot.name)}">
         <div class="pot-balance ${balance>=0?'pos':'neg'}">${formatEUR(balance)}</div>
@@ -1070,8 +1169,17 @@ function renderVermogenTab(){
           <input type="number" step="0.01" class="text-input pot-start-input" value="${pot.startBalance || 0}">
           <button class="remove-btn" title="Potje verwijderen">✕</button>
         </div>
+        <div class="pot-card-row pot-csv-status">
+          ${linked
+            ? `<span class="panel-lead-small" style="margin:0;">Gekoppeld aan spaarrekening &mdash; ${savingsTxs.length} mutatie(s), laatst ${lastDate}</span>`
+            : `<span class="panel-lead-small" style="margin:0;">Saldo afgeleid uit herkende overboekingen</span>`}
+        </div>
+        <div class="pot-card-row">
+          <input type="file" accept=".csv" class="pot-csv-input" hidden>
+          <button class="btn btn-outline btn-small pot-csv-btn">${linked ? 'Nog een afschrift uploaden' : 'Spaarrekening-afschrift uploaden'}</button>
+        </div>
       </div>
-    `).join('');
+    `;}).join('');
 
     potListEl.querySelectorAll('.pot-card').forEach(card => {
       const id = card.dataset.id;
@@ -1090,14 +1198,30 @@ function renderVermogenTab(){
         pot.startBalance = parseFloat(e.target.value) || 0; saveState(); refreshAll();
       });
       card.querySelector('.remove-btn').addEventListener('click', () => {
-        if(state.transactions.some(t => t.potId === id)){
-          alert('Dit potje is nog gekoppeld aan transacties en kan niet verwijderd worden. Koppel die transacties eerst aan een ander potje.');
+        if(state.transactions.some(t => t.potId === id) || getSavingsTransactionsForPot(id).length > 0){
+          alert('Dit potje is nog gekoppeld aan transacties of een spaarrekening-afschrift en kan niet verwijderd worden. Koppel die eerst aan een ander potje, of verwijder eerst de mutaties.');
           return;
         }
         if(!confirm(`Potje "${pot.name}" verwijderen?`)) return;
         state.pots = state.pots.filter(p => p.id !== id);
         state.potRules = state.potRules.filter(r => r.potId !== id);
         saveState(); refreshAll();
+      });
+
+      const csvInput = card.querySelector('.pot-csv-input');
+      const csvBtn = card.querySelector('.pot-csv-btn');
+      csvBtn.addEventListener('click', () => csvInput.click());
+      csvInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const result = parseSavingsFile(ev.target.result, id);
+          saveState();
+          refreshAll();
+          alert(`"${pot.name}": ${result.added} nieuwe mutatie(s) toegevoegd, ${result.duplicates} overgeslagen (al bekend).`);
+        };
+        reader.readAsText(file, 'utf-8');
       });
     });
   }
@@ -1160,7 +1284,8 @@ function renderVermogenTab(){
     tableEl.innerHTML = `<tbody><tr><td class="empty-state">Nog geen transacties in de categorie "Sparen".</td></tr></tbody>`;
   } else {
     const potOptions = state.pots.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Potje</th></tr></thead><tbody>`;
+    const catOptions = state.categories.map(c => `<option value="${c.id}" ${c.id==='sparen'?'selected':''}>${c.name}</option>`).join('');
+    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Potje</th><th>Categorie</th></tr></thead><tbody>`;
     for(const t of allSparen){
       html += `<tr data-id="${t.id}">
         <td>${t.date}</td>
@@ -1173,17 +1298,64 @@ function renderVermogenTab(){
             ${potOptions}
           </select>
         </td>
+        <td>
+          <select class="select-input cat-edit-select" title="Bleek dit toch geen spaaractie te zijn? Wijzig hier de categorie.">
+            ${catOptions}
+          </select>
+        </td>
       </tr>`;
     }
     html += '</tbody>';
     tableEl.innerHTML = html;
     tableEl.querySelectorAll('tr[data-id]').forEach(row => {
-      const sel = row.querySelector('.pot-edit-select');
       const tx = allSparen.find(t => t.id === row.dataset.id);
-      if(!sel || !tx) return;
+      if(!tx) return;
+      const catSel = row.querySelector('.cat-edit-select');
+      if(catSel){
+        catSel.value = tx.category || '';
+        catSel.addEventListener('change', (e) => {
+          applyCategoryChange(tx, e.target.value);
+          saveState();
+          refreshAll();
+        });
+      }
+      const sel = row.querySelector('.pot-edit-select');
+      if(!sel) return;
       sel.value = tx.potId || '';
       sel.addEventListener('change', (e) => {
         tx.potId = e.target.value || null;
+        saveState(); refreshAll();
+      });
+    });
+  }
+
+  // Spaarrekening-mutaties (rechtstreeks geïmporteerd, alle potjes samen)
+  const savingsTableEl = document.getElementById('tableSavingsMutaties');
+  const allSavingsTxs = [...state.savingsTransactions].sort((a,b) => b.date.localeCompare(a.date));
+  if(allSavingsTxs.length === 0){
+    savingsTableEl.innerHTML = `<tbody><tr><td class="empty-state">Nog geen spaarrekening-afschrift geüpload. Gebruik de knop bij een potje hierboven.</td></tr></tbody>`;
+  } else {
+    let svHtml = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Potje</th><th class="num">Bedrag</th><th></th></tr></thead><tbody>`;
+    for(const t of allSavingsTxs){
+      const pot = potById(t.potId);
+      svHtml += `<tr data-id="${t.id}">
+        <td>${t.date}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td>${pot ? pot.name : '<em>verwijderd potje</em>'}</td>
+        <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
+        <td><button class="remove-btn delete-savings-btn" title="Mutatie verwijderen">🗑</button></td>
+      </tr>`;
+    }
+    svHtml += '</tbody>';
+    savingsTableEl.innerHTML = svHtml;
+    savingsTableEl.querySelectorAll('.delete-savings-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const row = btn.closest('tr');
+        const txId = row.dataset.id;
+        const tx = state.savingsTransactions.find(t => t.id === txId);
+        if(!tx) return;
+        if(!confirm(`Mutatie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) verwijderen?`)) return;
+        state.savingsTransactions = state.savingsTransactions.filter(t => t.id !== txId);
         saveState(); refreshAll();
       });
     });
@@ -1381,7 +1553,8 @@ function renderSchuldenTab(){
     tableEl.innerHTML = `<tbody><tr><td class="empty-state">Nog geen transacties in de categorie "Aflossing schuld".</td></tr></tbody>`;
   } else {
     const debtOptions = state.debts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Schuld</th></tr></thead><tbody>`;
+    const catOptions = state.categories.map(c => `<option value="${c.id}" ${c.id==='aflossing'?'selected':''}>${c.name}</option>`).join('');
+    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Schuld</th><th>Categorie</th></tr></thead><tbody>`;
     for(const t of allAflossingen){
       html += `<tr data-id="${t.id}">
         <td>${t.date}</td>
@@ -1394,14 +1567,29 @@ function renderSchuldenTab(){
             ${debtOptions}
           </select>
         </td>
+        <td>
+          <select class="select-input cat-edit-select" title="Bleek dit toch geen aflossing te zijn? Wijzig hier de categorie.">
+            ${catOptions}
+          </select>
+        </td>
       </tr>`;
     }
     html += '</tbody>';
     tableEl.innerHTML = html;
     tableEl.querySelectorAll('tr[data-id]').forEach(row => {
-      const sel = row.querySelector('.debt-edit-select');
       const tx = allAflossingen.find(t => t.id === row.dataset.id);
-      if(!sel || !tx) return;
+      if(!tx) return;
+      const catSel = row.querySelector('.cat-edit-select');
+      if(catSel){
+        catSel.value = tx.category || '';
+        catSel.addEventListener('change', (e) => {
+          applyCategoryChange(tx, e.target.value);
+          saveState();
+          refreshAll();
+        });
+      }
+      const sel = row.querySelector('.debt-edit-select');
+      if(!sel) return;
       sel.value = tx.debtId || '';
       sel.addEventListener('change', (e) => {
         tx.debtId = e.target.value || null;
@@ -1870,6 +2058,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         state = imported;
         if(!state.rules) state.rules = JSON.parse(JSON.stringify(DEFAULT_RULES));
+        if(!state.pots) state.pots = [];
+        if(!state.potRules) state.potRules = [];
+        if(!state.savingsTransactions) state.savingsTransactions = [];
+        if(!state.debts) state.debts = [];
+        if(!state.debtRules) state.debtRules = [];
+        if(!state.dismissedSubscriptions) state.dismissedSubscriptions = [];
         saveState();
         document.getElementById('labelPerson1').textContent = state.people.p1;
         document.getElementById('labelPerson2').textContent = state.people.p2;
