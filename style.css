@@ -403,9 +403,9 @@ body{
 .rule-manage-row .cat{ flex:1; color: var(--ink-soft); }
 .add-row{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .add-row .text-input{ flex: 1; min-width: 160px; }
-.remove-btn{ background: none; border: none; color: var(--brick); cursor: pointer; font-size: 15px; opacity: 0.75; }
-.remove-btn:hover{ color: var(--brick); opacity: 1; }
-.delete-tx-btn{ font-size: 16px; padding: 2px 6px; }
+.remove-btn{ background: none; border: none; color: var(--brick); cursor: pointer; font-size: 15px; opacity: 0.8; display: inline-flex; align-items: center; padding: 3px; border-radius: 5px; }
+.remove-btn:hover{ opacity: 1; background: var(--brick-tint); }
+.delete-tx-btn{ padding: 4px 8px; }
 .ledger-table td.delete-cell{ position: sticky; right: 0; background: var(--paper-raised); text-align: center; }
 
 /* ---------- Custom charts (no external library) ---------- */
