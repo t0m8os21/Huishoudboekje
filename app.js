@@ -935,6 +935,15 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 
+/**
+ * Emoji zoals 🗑 worden door browsers altijd in hun eigen volle kleur
+ * getekend en negeren de CSS `color`-eigenschap. Voor een betrouwbaar rood
+ * prullenbak-icoon gebruiken we daarom een inline SVG met `currentColor`.
+ */
+function trashIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>`;
+}
+
 /* ===================== Tab: Maand ===================== */
 
 function renderPersonToggle(toggleId, current, onSelect){
@@ -1035,7 +1044,7 @@ function renderMaandTab(){
         </select>
       </td>
       <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
-      <td class="delete-cell"><button class="remove-btn delete-tx-btn" title="Transactie verwijderen">🗑</button></td>
+      <td class="delete-cell"><button class="remove-btn delete-tx-btn" title="Transactie verwijderen">${trashIconSvg()}</button></td>
     </tr>`;
   }
   html += '</tbody>';
@@ -1167,7 +1176,7 @@ function renderVermogenTab(){
         <div class="pot-card-row">
           <label>Start</label>
           <input type="number" step="0.01" class="text-input pot-start-input" value="${pot.startBalance || 0}">
-          <button class="remove-btn" title="Potje verwijderen">✕</button>
+          <button class="remove-btn" title="Potje verwijderen">${trashIconSvg()}</button>
         </div>
         <div class="pot-card-row pot-csv-status">
           ${linked
@@ -1343,7 +1352,7 @@ function renderVermogenTab(){
         <td>${escapeHtml(t.description)}</td>
         <td>${pot ? pot.name : '<em>verwijderd potje</em>'}</td>
         <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
-        <td><button class="remove-btn delete-savings-btn" title="Mutatie verwijderen">🗑</button></td>
+        <td><button class="remove-btn delete-savings-btn" title="Mutatie verwijderen">${trashIconSvg()}</button></td>
       </tr>`;
     }
     svHtml += '</tbody>';
@@ -1370,7 +1379,7 @@ function renderVermogenTab(){
     <div class="rule-manage-row" data-i="${i}">
       <span class="kw">${escapeHtml(r.keyword)}</span>
       <span class="cat">→ ${(potById(r.potId)||{name:'?'}).name}</span>
-      <button class="remove-btn" title="Verwijderen">✕</button>
+      <button class="remove-btn" title="Verwijderen">${trashIconSvg()}</button>
     </div>
   `).join('');
   ruleListEl.querySelectorAll('.remove-btn').forEach(btn => {
@@ -1443,7 +1452,7 @@ function renderSchuldenTab(){
         ${overwaarde !== null ? `<div class="pot-card-row" style="font-size:12px;color:var(--ink-soft);">Overwaarde: <strong style="margin-left:4px;color:${overwaarde>=0?'var(--forest)':'var(--brick)'}">${formatEUR(overwaarde)}</strong></div>` : ''}
         ` : ''}
         <div class="pot-card-row">
-          <button class="remove-btn" title="Verwijderen" style="margin-left:auto;">✕ Verwijderen</button>
+          <button class="remove-btn" title="Verwijderen" style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;">${trashIconSvg()} Verwijderen</button>
         </div>
       </div>
     `;}).join('');
@@ -1607,7 +1616,7 @@ function renderSchuldenTab(){
     <div class="rule-manage-row" data-i="${i}">
       <span class="kw">${escapeHtml(r.keyword)}</span>
       <span class="cat">→ ${(debtById(r.debtId)||{name:'?'}).name}</span>
-      <button class="remove-btn" title="Verwijderen">✕</button>
+      <button class="remove-btn" title="Verwijderen">${trashIconSvg()}</button>
     </div>
   `).join('');
   ruleListEl.querySelectorAll('.remove-btn').forEach(btn => {
@@ -1762,7 +1771,7 @@ function renderInstellingenTab(){
       <label style="font-size:11.5px;color:var(--ink-soft);display:flex;align-items:center;gap:4px;">
         <input type="checkbox" class="cat-transfer" ${c.isTransfer ? 'checked' : ''}> telt niet mee in saldo
       </label>
-      <button class="remove-btn" title="Verwijderen">✕</button>
+      <button class="remove-btn" title="Verwijderen">${trashIconSvg()}</button>
     </div>
   `).join('');
 
@@ -1806,7 +1815,7 @@ function renderInstellingenTab(){
     <div class="rule-manage-row" data-i="${i}">
       <span class="kw">${escapeHtml(r.keyword)}</span>
       <span class="cat">→ ${(categoryById(r.category)||{name:'?'}).name}</span>
-      <button class="remove-btn" title="Verwijderen">✕</button>
+      <button class="remove-btn" title="Verwijderen">${trashIconSvg()}</button>
     </div>
   `).join('');
   ruleList.querySelectorAll('.remove-btn').forEach(btn => {
