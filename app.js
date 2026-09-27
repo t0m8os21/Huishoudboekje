@@ -216,6 +216,13 @@ function applyCategoryChange(t, newCategoryId){
   maybeAutoAssignDebt(t);
 }
 
+/** Haalt de categorie (en eventuele potje/schuld-koppeling) weg, zodat de
+ * transactie weer als "nog te categoriseren" verschijnt, zonder de
+ * transactie zelf te verwijderen. */
+function sendBackToCategorize(t){
+  applyCategoryChange(t, null);
+}
+
 function reapplyRules(){
   let changed = 0;
   for(const t of state.transactions){
@@ -903,9 +910,23 @@ function renderCategorizeTab(){
           <input type="checkbox" class="remember-check" checked> onthoud dit
         </label>
         <button class="btn btn-solid btn-small save-cat">Opslaan</button>
+        <button class="remove-btn delete-forever-btn" title="Transactie volledig verwijderen">${trashIconSvg()}</button>
       </div>
     `;
   }).join('');
+
+  list.querySelectorAll('.delete-forever-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.categorize-item');
+      const id = item.dataset.id;
+      const tx = state.transactions.find(t => t.id === id);
+      if(!tx) return;
+      if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) volledig verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
+      state.transactions = state.transactions.filter(t => t.id !== id);
+      saveState();
+      refreshAll();
+    });
+  });
 
   list.querySelectorAll('.save-cat').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1044,7 +1065,7 @@ function renderMaandTab(){
         </select>
       </td>
       <td class="num ${t.amount >= 0 ? 'pos' : 'neg'}">${formatEUR(t.amount)}</td>
-      <td class="delete-cell"><button class="remove-btn delete-tx-btn" title="Transactie verwijderen">${trashIconSvg()}</button></td>
+      <td class="delete-cell"><button class="remove-btn delete-tx-btn" title="Terug naar categoriseren">${trashIconSvg()}</button></td>
     </tr>`;
   }
   html += '</tbody>';
@@ -1065,8 +1086,8 @@ function renderMaandTab(){
     const deleteBtn = row.querySelector('.delete-tx-btn');
     if(deleteBtn){
       deleteBtn.addEventListener('click', () => {
-        if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
-        state.transactions = state.transactions.filter(t => t.id !== tx.id);
+        if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) terugsturen naar Categoriseren? De categorie (en eventuele koppeling aan een potje/schuld) wordt losgemaakt; de transactie zelf blijft bewaard.`)) return;
+        sendBackToCategorize(tx);
         saveState();
         refreshAll();
       });
@@ -1294,7 +1315,7 @@ function renderVermogenTab(){
   } else {
     const potOptions = state.pots.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     const catOptions = state.categories.map(c => `<option value="${c.id}" ${c.id==='sparen'?'selected':''}>${c.name}</option>`).join('');
-    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Potje</th><th>Categorie</th></tr></thead><tbody>`;
+    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Potje</th><th>Categorie</th><th></th></tr></thead><tbody>`;
     for(const t of allSparen){
       html += `<tr data-id="${t.id}">
         <td>${t.date}</td>
@@ -1312,6 +1333,7 @@ function renderVermogenTab(){
             ${catOptions}
           </select>
         </td>
+        <td class="delete-cell"><button class="remove-btn back-to-categorize-btn" title="Terug naar categoriseren">${trashIconSvg()}</button></td>
       </tr>`;
     }
     html += '</tbody>';
@@ -1329,12 +1351,22 @@ function renderVermogenTab(){
         });
       }
       const sel = row.querySelector('.pot-edit-select');
-      if(!sel) return;
-      sel.value = tx.potId || '';
-      sel.addEventListener('change', (e) => {
-        tx.potId = e.target.value || null;
-        saveState(); refreshAll();
-      });
+      if(sel){
+        sel.value = tx.potId || '';
+        sel.addEventListener('change', (e) => {
+          tx.potId = e.target.value || null;
+          saveState(); refreshAll();
+        });
+      }
+      const backBtn = row.querySelector('.back-to-categorize-btn');
+      if(backBtn){
+        backBtn.addEventListener('click', () => {
+          if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) terugsturen naar Categoriseren? De categorie en potje-koppeling worden losgemaakt; de transactie zelf blijft bewaard.`)) return;
+          sendBackToCategorize(tx);
+          saveState();
+          refreshAll();
+        });
+      }
     });
   }
 
@@ -1563,7 +1595,7 @@ function renderSchuldenTab(){
   } else {
     const debtOptions = state.debts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
     const catOptions = state.categories.map(c => `<option value="${c.id}" ${c.id==='aflossing'?'selected':''}>${c.name}</option>`).join('');
-    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Schuld</th><th>Categorie</th></tr></thead><tbody>`;
+    let html = `<thead><tr><th>Datum</th><th>Omschrijving</th><th>Wie</th><th class="num">Bedrag</th><th>Schuld</th><th>Categorie</th><th></th></tr></thead><tbody>`;
     for(const t of allAflossingen){
       html += `<tr data-id="${t.id}">
         <td>${t.date}</td>
@@ -1581,6 +1613,7 @@ function renderSchuldenTab(){
             ${catOptions}
           </select>
         </td>
+        <td class="delete-cell"><button class="remove-btn back-to-categorize-btn" title="Terug naar categoriseren">${trashIconSvg()}</button></td>
       </tr>`;
     }
     html += '</tbody>';
@@ -1598,12 +1631,22 @@ function renderSchuldenTab(){
         });
       }
       const sel = row.querySelector('.debt-edit-select');
-      if(!sel) return;
-      sel.value = tx.debtId || '';
-      sel.addEventListener('change', (e) => {
-        tx.debtId = e.target.value || null;
-        saveState(); refreshAll();
-      });
+      if(sel){
+        sel.value = tx.debtId || '';
+        sel.addEventListener('change', (e) => {
+          tx.debtId = e.target.value || null;
+          saveState(); refreshAll();
+        });
+      }
+      const backBtn = row.querySelector('.back-to-categorize-btn');
+      if(backBtn){
+        backBtn.addEventListener('click', () => {
+          if(!confirm(`Transactie "${tx.description}" (${formatEUR(tx.amount)}, ${tx.date}) terugsturen naar Categoriseren? De categorie en schuld-koppeling worden losgemaakt; de transactie zelf blijft bewaard.`)) return;
+          sendBackToCategorize(tx);
+          saveState();
+          refreshAll();
+        });
+      }
     });
   }
 
